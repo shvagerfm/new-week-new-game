@@ -1,0 +1,8 @@
+; Swallowed
+; tip Remember: a plate only works while its crate stays on it.
+##########
+#@ $  _  #
+#  $ $   #
+#OOOOOO###
+#  .  .  #
+##########

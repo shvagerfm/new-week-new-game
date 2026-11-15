@@ -1,0 +1,8 @@
+; One way
+; tip Arrows only let Kip and crates through in their direction.
+#########
+#@  >  .#
+# $ #   #
+#   ^   #
+#   $   #
+#########

@@ -1,0 +1,9 @@
+; Bridge
+; tip Plates close black holes too.
+#########
+#@  $ _ #
+#       #
+#OOOOOOO#
+#  $    #
+#    .  #
+#########

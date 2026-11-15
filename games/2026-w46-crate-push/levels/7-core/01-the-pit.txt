@@ -1,0 +1,9 @@
+; The pit
+; tip Black holes swallow crates. And robots.
+########
+#      #
+#      #
+#@$ O .#
+#      #
+#      #
+########

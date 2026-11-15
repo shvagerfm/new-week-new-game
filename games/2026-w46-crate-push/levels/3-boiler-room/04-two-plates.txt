@@ -1,0 +1,9 @@
+; Two plates
+; tip Every plate must hold a crate.
+##########
+#_  $  $_#
+#   @    #
+####~~####
+#   $$   #
+#   ..   #
+##########

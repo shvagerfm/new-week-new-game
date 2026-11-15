@@ -1,0 +1,10 @@
+; Ice rink
+; tip A sliding crate stops on plain floor or when it hits something.
+#########
+#   @   #
+#  $    #
+# ==.== #
+#  ===  #
+#   $   #
+#  =.=  #
+#########

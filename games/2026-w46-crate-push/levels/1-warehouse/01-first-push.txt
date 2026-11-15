@@ -1,0 +1,5 @@
+; First push
+; tip Swipe or use the arrow keys. Push every battery crate onto a charger.
+#######
+#@ $ .#
+#######

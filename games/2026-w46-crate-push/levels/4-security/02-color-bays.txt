@@ -1,0 +1,8 @@
+; Color bays
+; tip A colored crate only charges on a bay of its color.
+#########
+#   @   #
+# a   b #
+#       #
+# B   A #
+#########

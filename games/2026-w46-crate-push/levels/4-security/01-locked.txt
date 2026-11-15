@@ -1,0 +1,7 @@
+; Locked
+; tip Grab the key to open the door. Each key opens one door.
+#########
+#@  #   #
+# $ D . #
+# k #   #
+#########

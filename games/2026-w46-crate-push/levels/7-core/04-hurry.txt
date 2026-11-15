@@ -1,0 +1,8 @@
+; Hurry
+; limit 9
+; tip Only 9 moves here. Think first.
+#######
+#  .  #
+# $$  #
+#@  . #
+#######
