@@ -1,0 +1,10 @@
+; Heavy duty
+; tip Heavy crates crash through cracked floor and fill the hole.
+; par 30
+########
+#.  %% #
+#@##&  #
+#$ #   #
+#      #
+#.#    #
+########

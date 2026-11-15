@@ -1,0 +1,315 @@
+{
+  "tileWidth": 128,
+  "tileHeight": 128,
+  "columns": 4,
+  "rows": 3,
+  "sheets": [
+    {
+      "file": "sheet-1-core.png",
+      "sprites": [
+        {
+          "name": "robot-up",
+          "x": 0,
+          "y": 0,
+          "width": 128,
+          "height": 128
+        },
+        {
+          "name": "robot-down",
+          "x": 128,
+          "y": 0,
+          "width": 128,
+          "height": 128
+        },
+        {
+          "name": "robot-left",
+          "x": 256,
+          "y": 0,
+          "width": 128,
+          "height": 128
+        },
+        {
+          "name": "robot-right",
+          "x": 384,
+          "y": 0,
+          "width": 128,
+          "height": 128
+        },
+        {
+          "name": "floor",
+          "x": 0,
+          "y": 128,
+          "width": 128,
+          "height": 128
+        },
+        {
+          "name": "wall",
+          "x": 128,
+          "y": 128,
+          "width": 128,
+          "height": 128
+        },
+        {
+          "name": "crate",
+          "x": 256,
+          "y": 128,
+          "width": 128,
+          "height": 128
+        },
+        {
+          "name": "target",
+          "x": 384,
+          "y": 128,
+          "width": 128,
+          "height": 128
+        },
+        {
+          "name": "crate-on-target",
+          "x": 0,
+          "y": 256,
+          "width": 128,
+          "height": 128
+        }
+      ]
+    },
+    {
+      "file": "sheet-2-hazards.png",
+      "sprites": [
+        {
+          "name": "ice",
+          "x": 0,
+          "y": 0,
+          "width": 128,
+          "height": 128
+        },
+        {
+          "name": "one-way-right",
+          "x": 128,
+          "y": 0,
+          "width": 128,
+          "height": 128
+        },
+        {
+          "name": "fire-active",
+          "x": 256,
+          "y": 0,
+          "width": 128,
+          "height": 128
+        },
+        {
+          "name": "fire-off",
+          "x": 384,
+          "y": 0,
+          "width": 128,
+          "height": 128
+        },
+        {
+          "name": "switch-up",
+          "x": 0,
+          "y": 128,
+          "width": 128,
+          "height": 128
+        },
+        {
+          "name": "switch-pressed",
+          "x": 128,
+          "y": 128,
+          "width": 128,
+          "height": 128
+        },
+        {
+          "name": "vortex",
+          "x": 256,
+          "y": 128,
+          "width": 128,
+          "height": 128
+        },
+        {
+          "name": "teleport-blue",
+          "x": 384,
+          "y": 128,
+          "width": 128,
+          "height": 128
+        },
+        {
+          "name": "teleport-purple",
+          "x": 0,
+          "y": 256,
+          "width": 128,
+          "height": 128
+        },
+        {
+          "name": "crumbling-floor",
+          "x": 128,
+          "y": 256,
+          "width": 128,
+          "height": 128
+        },
+        {
+          "name": "broken-hole",
+          "x": 256,
+          "y": 256,
+          "width": 128,
+          "height": 128
+        }
+      ]
+    },
+    {
+      "file": "sheet-3-objects.png",
+      "sprites": [
+        {
+          "name": "key-card",
+          "x": 0,
+          "y": 0,
+          "width": 128,
+          "height": 128
+        },
+        {
+          "name": "door-closed",
+          "x": 128,
+          "y": 0,
+          "width": 128,
+          "height": 128
+        },
+        {
+          "name": "door-open",
+          "x": 256,
+          "y": 0,
+          "width": 128,
+          "height": 128
+        },
+        {
+          "name": "crate-red",
+          "x": 384,
+          "y": 0,
+          "width": 128,
+          "height": 128
+        },
+        {
+          "name": "crate-blue",
+          "x": 0,
+          "y": 128,
+          "width": 128,
+          "height": 128
+        },
+        {
+          "name": "crate-green",
+          "x": 128,
+          "y": 128,
+          "width": 128,
+          "height": 128
+        },
+        {
+          "name": "crate-yellow",
+          "x": 256,
+          "y": 128,
+          "width": 128,
+          "height": 128
+        },
+        {
+          "name": "target-red",
+          "x": 384,
+          "y": 128,
+          "width": 128,
+          "height": 128
+        },
+        {
+          "name": "target-blue",
+          "x": 0,
+          "y": 256,
+          "width": 128,
+          "height": 128
+        },
+        {
+          "name": "target-green",
+          "x": 128,
+          "y": 256,
+          "width": 128,
+          "height": 128
+        },
+        {
+          "name": "target-yellow",
+          "x": 256,
+          "y": 256,
+          "width": 128,
+          "height": 128
+        },
+        {
+          "name": "heavy-crate",
+          "x": 384,
+          "y": 256,
+          "width": 128,
+          "height": 128
+        }
+      ]
+    },
+    {
+      "file": "sheet-4-ui.png",
+      "sprites": [
+        {
+          "name": "pull",
+          "x": 0,
+          "y": 0,
+          "width": 128,
+          "height": 128
+        },
+        {
+          "name": "wall-blast",
+          "x": 128,
+          "y": 0,
+          "width": 128,
+          "height": 128
+        },
+        {
+          "name": "plus-five-moves",
+          "x": 256,
+          "y": 0,
+          "width": 128,
+          "height": 128
+        },
+        {
+          "name": "hint",
+          "x": 384,
+          "y": 0,
+          "width": 128,
+          "height": 128
+        },
+        {
+          "name": "star-filled",
+          "x": 0,
+          "y": 128,
+          "width": 128,
+          "height": 128
+        },
+        {
+          "name": "star-empty",
+          "x": 128,
+          "y": 128,
+          "width": 128,
+          "height": 128
+        },
+        {
+          "name": "undo",
+          "x": 256,
+          "y": 128,
+          "width": 128,
+          "height": 128
+        },
+        {
+          "name": "restart",
+          "x": 384,
+          "y": 128,
+          "width": 128,
+          "height": 128
+        },
+        {
+          "name": "menu",
+          "x": 0,
+          "y": 256,
+          "width": 128,
+          "height": 128
+        }
+      ]
+    }
+  ]
+}

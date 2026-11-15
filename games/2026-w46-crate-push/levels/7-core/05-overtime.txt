@@ -1,0 +1,8 @@
+; Overtime
+; limit 4
+; tip Grab a clock for 5 extra moves.
+; par 7
+#########
+#@  $  .#
+#  t    #
+#########

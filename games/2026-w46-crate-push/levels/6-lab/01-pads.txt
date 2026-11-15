@@ -1,0 +1,8 @@
+; Pads
+; tip Step on a pad to come out of its twin. Crates too.
+; par 7
+#########
+#@ $ 1# #
+#       #
+#   # 1.#
+#########

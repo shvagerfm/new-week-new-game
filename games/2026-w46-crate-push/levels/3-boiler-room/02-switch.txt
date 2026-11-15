@@ -1,0 +1,9 @@
+; Switch
+; tip A crate on the plate puts out every fire.
+; par 5
+#########
+#@ $ _  #
+####~####
+#   $   #
+#   .   #
+#########

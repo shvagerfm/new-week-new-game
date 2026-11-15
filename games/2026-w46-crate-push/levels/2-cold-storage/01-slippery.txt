@@ -1,0 +1,8 @@
+; Slippery
+; tip Ice is slippery. Crates and Kip slide until something stops them.
+; par 2
+##########
+#   ==== #
+#@ $====.#
+#   ==== #
+##########

@@ -1,0 +1,10 @@
+; Bridge
+; tip Plates close black holes too.
+; par 13
+#########
+#@  $ _ #
+#       #
+#OOOOOOO#
+#  $    #
+#    .  #
+#########

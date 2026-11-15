@@ -1,0 +1,10 @@
+; Hot floor
+; tip Fire blocks Kip and burns any crate pushed into it.
+; par 14
+#########
+#   ~   #
+#@$ ~ . #
+#   ~   #
+#       #
+#       #
+#########
