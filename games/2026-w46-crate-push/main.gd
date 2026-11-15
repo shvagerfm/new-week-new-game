@@ -16,10 +16,10 @@ const MOVE_TIME := 0.09
 const BUMP_TIME := 0.12
 
 const BOOSTERS := {
-	"hint": {"label": "Hint", "uses": 3},
-	"pull": {"label": "Pull", "uses": 1},
-	"blast": {"label": "Blast", "uses": 1},
-	"moves": {"label": "+5 moves", "uses": 1},
+	"hint": {"label": "Hint", "uses": 3, "icon": "hint"},
+	"pull": {"label": "Pull", "uses": 1, "icon": "pull"},
+	"blast": {"label": "Blast", "uses": 1, "icon": "wall-blast"},
+	"moves": {"label": "+5", "uses": 1, "icon": "plus-five-moves"},
 }
 
 const C_BG := Color("171a29")
@@ -38,8 +38,9 @@ const C_DIM := Color("9aa0c0")
 const C_BUTTON := Color("2d3252")
 const C_BUTTON_HOVER := Color("3a4068")
 const C_STAR := Color("ffd23f")
-const CRATE_COLORS := {"a": Color("ff6b6b"), "b": Color("5aa9ff"), "c": Color("c38bff")}
-const PAD_COLORS := [Color("6fe0c0"), Color("ff8fd8"), Color("ffe066"), Color("8fa8ff")]
+const CRATE_NAMES := {"a": "red", "b": "blue", "c": "green"}
+const PAD_SPRITES := ["teleport-blue", "teleport-purple"]
+const C_FLOOR_BASE := Color("1d2034")
 
 var zones: Array[Dictionary] = []
 var best := {}        # level id -> stars (1..3)
@@ -101,9 +102,6 @@ var overlay_stars: Control
 var overlay_text: Label
 var overlay_buttons: HBoxContainer
 
-var wall_style := StyleBoxFlat.new()
-var crate_style := StyleBoxFlat.new()
-var robot_style := StyleBoxFlat.new()
 
 
 func _ready() -> void:
@@ -557,14 +555,6 @@ func _layout() -> void:
 	var area := Rect2(Vector2(MARGIN, TOP_BAR), view - Vector2(MARGIN * 2.0, TOP_BAR + BOTTOM_BAR))
 	cell = floorf(minf(minf(area.size.x / lv.size.x, area.size.y / lv.size.y), MAX_CELL))
 	origin = (area.position + (area.size - Vector2(lv.size) * cell) / 2.0).floor()
-	wall_style.bg_color = C_WALL
-	wall_style.border_color = C_WALL_EDGE
-	wall_style.border_width_bottom = int(cell * 0.12)
-	wall_style.set_corner_radius_all(int(cell * 0.12))
-	crate_style.set_corner_radius_all(int(cell * 0.14))
-	crate_style.set_border_width_all(int(cell * 0.08))
-	robot_style.set_corner_radius_all(int(cell * 0.2))
-	robot_style.bg_color = C_PLAYER
 	queue_redraw()
 
 
@@ -580,19 +570,17 @@ func _draw() -> void:
 		_draw_floor(p, on)
 	for p in lv.walls:
 		if not state.blasted.has(p):
-			draw_style_box(wall_style, _cell_rect(Vector2(p)).grow(-cell * 0.02))
+			_spr("wall", _cell_rect(Vector2(p)))
 	for p in lv.goals:
-		var col: Color = C_GOAL if lv.goals[p] == "" else CRATE_COLORS[lv.goals[p]]
-		var c := _cell_rect(Vector2(p)).get_center()
-		draw_arc(c, cell * 0.24, 0.0, TAU, 32, col, cell * 0.07, true)
-		draw_circle(c, cell * 0.07, col, true, -1.0, true)
+		if not state.boxes.has(p):
+			_spr("target" if lv.goals[p] == "" else "target-" + CRATE_NAMES[lv.goals[p]], _cell_rect(Vector2(p)))
 
 	var k := 1.0 - pow(1.0 - anim_t, 3.0)
 	for p: Vector2i in state.boxes:
 		var pos := Vector2(p)
 		if crate_moves.has(p) and anim_t < 1.0:
 			pos = crate_moves[p].lerp(pos, k)
-		_draw_crate(pos, state.boxes[p], _crate_done(p) and anim_t >= 1.0)
+		_draw_crate(pos, state.boxes[p], _crate_done(p) and anim_t >= 1.0, lv.goals.has(p))
 
 	var ppos := player_from.lerp(Vector2(state.p), k) if anim_t < 1.0 else Vector2(state.p)
 	if bump_t < 1.0:
@@ -603,7 +591,20 @@ func _draw() -> void:
 		var d := Vector2(hint_dir)
 		var tip := c + d * cell * (0.9 + 0.08 * sin(clock * 6.0))
 		var side := Vector2(-d.y, d.x) * cell * 0.22
-		draw_colored_polygon(PackedVector2Array([tip, tip - d * cell * 0.3 + side, tip - d * cell * 0.3 - side]), C_TEXT)
+		var tri := PackedVector2Array([tip, tip - d * cell * 0.3 + side, tip - d * cell * 0.3 - side])
+		draw_colored_polygon(tri, C_TEXT)
+		draw_polyline(tri + PackedVector2Array([tip]), C_BG, cell * 0.03, true)
+
+
+func _spr(sprite: String, r: Rect2, mod := Color.WHITE) -> void:
+	var s: Array = Sprites.MAP[sprite]
+	draw_texture_rect_region(Sprites.sheet(s[0]), r, Rect2(s[1] * 128, s[2] * 128, 128, 128), mod)
+
+
+func _spr_rotated(sprite: String, r: Rect2, angle: float) -> void:
+	draw_set_transform(r.get_center(), angle)
+	_spr(sprite, Rect2(-r.size / 2.0, r.size))
+	draw_set_transform(Vector2.ZERO)
 
 
 func _crate_done(p: Vector2i) -> bool:
@@ -614,158 +615,82 @@ func _crate_done(p: Vector2i) -> bool:
 
 func _draw_floor(p: Vector2i, on: bool) -> void:
 	var r := _cell_rect(Vector2(p))
-	var c := r.get_center()
+	draw_rect(r, C_FLOOR_BASE)
 	if lv.walls.has(p):  # blasted wall
-		draw_rect(r, C_FLOOR.darkened(0.15))
+		_spr("floor", r, Color(0.8, 0.75, 0.7))
 		return
 	if lv.crumble.has(p):
 		var st: String = state.crumbled.get(p, "")
-		if st == "pit":
-			draw_rect(r, Color("0b0c14"))
-			draw_rect(Rect2(r.position, Vector2(cell, cell * 0.18)), Color("1c1f33"))
-			return
-		draw_rect(r, C_FLOOR if st == "filled" else Color("3a3346"))
-		if st == "filled":
-			draw_rect(r.grow(-cell * 0.12), Color("2d3150"), false, cell * 0.04)
-		else:
-			var col := Color("1d1a26")
-			draw_polyline(PackedVector2Array([r.position + Vector2(0.2, 0.15) * cell, c, r.position + Vector2(0.75, 0.3) * cell]), col, cell * 0.04, true)
-			draw_line(c, r.position + Vector2(0.55, 0.85) * cell, col, cell * 0.04, true)
+		_spr("broken-hole" if st == "pit" else ("floor" if st == "filled" else "crumbling-floor"), r)
 		return
-	draw_rect(r, C_FLOOR)
 	if lv.ice.has(p):
-		draw_rect(r, Color(0.62, 0.86, 0.96, 0.32))
-		draw_line(r.position + Vector2(0.2, 0.55) * cell, r.position + Vector2(0.45, 0.3) * cell, Color(1, 1, 1, 0.55), cell * 0.04, true)
-		draw_line(r.position + Vector2(0.5, 0.75) * cell, r.position + Vector2(0.75, 0.5) * cell, Color(1, 1, 1, 0.35), cell * 0.04, true)
+		_spr("ice", r)
 	elif lv.arrows.has(p):
-		var d := Vector2(lv.arrows[p])
-		var s := Vector2(-d.y, d.x)
-		for i in 2:
-			var tip := c + d * cell * (0.08 + 0.22 * i - 0.05)
-			draw_polyline(PackedVector2Array([tip - d * cell * 0.16 + s * cell * 0.2, tip, tip - d * cell * 0.16 - s * cell * 0.2]), Color("7fd6ff", 0.8), cell * 0.07, true)
+		_spr_rotated("one-way-right", r, Vector2(lv.arrows[p]).angle())
 	elif lv.plates.has(p):
-		var pressed: bool = state.boxes.has(p)
-		var pr := r.grow(-cell * 0.14)
-		draw_rect(pr, Color("ffb347", 0.55 if pressed else 0.12))
-		draw_rect(pr, Color("ffb347", 0.9), false, cell * 0.05)
+		_spr("switch-pressed" if state.boxes.has(p) else "switch-up", r)
 	elif lv.fire.has(p):
-		if on:
-			_draw_fire(c)
-		else:
-			for i in 3:
-				draw_circle(c + Vector2(i - 1, 0.3) * cell * 0.18, cell * 0.05, Color("5a5f7a"))
+		_spr("fire-active" if on else "fire-off", r)
 	elif lv.holes.has(p):
 		if on:
-			draw_circle(c, cell * 0.42, Color("120a1f"), true, -1.0, true)
-			for i in 3:
-				var a := clock * 2.5 + i * TAU / 3.0
-				draw_arc(c, cell * (0.18 + 0.08 * i), a, a + 2.2, 16, Color("a35cff", 0.8 - i * 0.2), cell * 0.05, true)
+			_spr("floor", r)
+			_spr_rotated("vortex", r, -clock * 1.5)
 		else:
-			draw_arc(c, cell * 0.38, 0.0, TAU, 32, Color("4a3a6a"), cell * 0.05, true)
+			_spr("floor", r)
+			_spr("vortex", r.grow(-cell * 0.2), Color(0.5, 0.5, 0.6, 0.35))
 	elif lv.teleports.has(p):
-		var tw: Vector2i = lv.teleports[p]
-		var pair := mini(p.x * 100 + p.y, tw.x * 100 + tw.y)
-		var col: Color = PAD_COLORS[_pad_index(pair)]
-		draw_arc(c, cell * 0.38, 0.0, TAU, 32, col, cell * 0.07, true)
-		draw_arc(c, cell * (0.12 + 0.12 * fmod(clock * 0.8, 1.0)), 0.0, TAU, 24, Color(col, 0.7), cell * 0.04, true)
+		_spr(PAD_SPRITES[_pad_index(p)], r, Color(1, 1, 1, 0.85 + 0.15 * sin(clock * 4.0)))
 	elif lv.doors.has(p):
-		if state.open.has(p):
-			draw_rect(r.grow(-cell * 0.06), Color("8a5a2b", 0.5), false, cell * 0.04)
-		else:
-			draw_rect(r.grow(-cell * 0.04), Color("8a5a2b"))
-			draw_rect(r.grow(-cell * 0.04), Color("5e3b1a"), false, cell * 0.06)
-			draw_circle(c - Vector2(0, cell * 0.06), cell * 0.09, Color("2a1a0a"))
-			draw_rect(Rect2(c + Vector2(-0.04, 0) * cell, Vector2(0.08, 0.2) * cell), Color("2a1a0a"))
+		_spr("floor", r)
+		_spr("door-open" if state.open.has(p) else "door-closed", r)
+	else:
+		_spr("floor", r)
 	if lv.has_pickup(state, p):
-		if lv.pickups[p] == "k":
-			var g := Color("ffd23f")
-			draw_arc(c + Vector2(-0.14, 0) * cell, cell * 0.12, 0.0, TAU, 20, g, cell * 0.06, true)
-			draw_line(c + Vector2(-0.02, 0) * cell, c + Vector2(0.3, 0) * cell, g, cell * 0.07)
-			draw_line(c + Vector2(0.22, 0) * cell, c + Vector2(0.22, 0.12) * cell, g, cell * 0.06)
-		else:
-			draw_circle(c, cell * 0.3, Color("e8f0ff"), true, -1.0, true)
-			var f := ThemeDB.fallback_font
-			var fs := int(cell * 0.3)
-			var w := f.get_string_size("+5", HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x
-			draw_string(f, c + Vector2(-w / 2.0, fs * 0.35), "+5", HORIZONTAL_ALIGNMENT_LEFT, -1, fs, C_BG)
+		var bob := Vector2(0, sin(clock * 3.0 + p.x) * cell * 0.04)
+		_spr("key-card" if lv.pickups[p] == "k" else "plus-five-moves", Rect2(r.position + bob, r.size).grow(-cell * 0.14))
 
 
-func _pad_index(pair: int) -> int:
+func _pad_index(p: Vector2i) -> int:
+	# Pads of the same pair share a color; pairs are numbered in map order.
 	var keys: Array = []
-	for p: Vector2i in lv.teleports:
-		var tw: Vector2i = lv.teleports[p]
-		var k := mini(p.x * 100 + p.y, tw.x * 100 + tw.y)
+	for q: Vector2i in lv.teleports:
+		var tw: Vector2i = lv.teleports[q]
+		var k := mini(q.y * 1000 + q.x, tw.y * 1000 + tw.x)
 		if not keys.has(k):
 			keys.append(k)
 	keys.sort()
-	return keys.find(pair) % PAD_COLORS.size()
+	var t: Vector2i = lv.teleports[p]
+	return keys.find(mini(p.y * 1000 + p.x, t.y * 1000 + t.x)) % PAD_SPRITES.size()
 
 
-func _draw_fire(c: Vector2) -> void:
-	var f := sin(clock * 9.0 + c.x) * 0.05
-	var flames := [[Color("ff5a36"), 0.36], [Color("ff9a3c"), 0.26], [Color("ffe066"), 0.15]]
-	for fl in flames:
-		var h: float = fl[1] * (1.0 + f)
-		var w: float = fl[1] * 0.8
-		var base := c + Vector2(0, cell * 0.3)
-		draw_colored_polygon(PackedVector2Array([
-			base + Vector2(-w, 0) * cell,
-			base + Vector2(-w * 0.7, -h * 1.2) * cell,
-			base + Vector2(f * 2.0, -h * 2.2) * cell,
-			base + Vector2(w * 0.7, -h * 1.2) * cell,
-			base + Vector2(w, 0) * cell,
-		]), fl[0])
-
-
-func _draw_crate(pos: Vector2, kind: String, done: bool) -> void:
-	var r := _cell_rect(pos).grow(-cell * 0.08)
-	var fill := C_BOX
-	var edge := C_BOX_EDGE
-	if kind == "&":
-		fill = Color("8d93a8")
-		edge = Color("5b6075")
-	elif CRATE_COLORS.has(kind):
-		fill = CRATE_COLORS[kind]
-		edge = fill.darkened(0.4)
+func _draw_crate(pos: Vector2, kind: String, done: bool, on_goal: bool) -> void:
+	var r := _cell_rect(pos)
 	if done:
-		if kind == "$":
-			fill = C_DONE
-			edge = C_DONE_EDGE
-		else:
-			edge = Color("ffffff")
-	crate_style.bg_color = fill
-	crate_style.border_color = edge
-	draw_style_box(crate_style, r)
-	var inner := r.grow(-cell * 0.2)
-	var shade := Color(0, 0, 0, 0.2)
+		draw_circle(r.get_center(), cell * 0.5, Color(C_DONE, 0.25 + 0.1 * sin(clock * 3.0)), true, -1.0, true)
+	var sprite := "crate"
 	if kind == "&":
-		for corner in [inner.position, Vector2(inner.end.x, inner.position.y), inner.end, Vector2(inner.position.x, inner.end.y)]:
-			draw_circle(corner, cell * 0.05, shade)
-		draw_rect(inner.grow(-cell * 0.08), shade, false, cell * 0.05)
-	else:
-		# Battery bolt
-		var c := r.get_center()
-		draw_colored_polygon(PackedVector2Array([
-			c + Vector2(0.06, -0.24) * cell, c + Vector2(-0.12, 0.03) * cell, c + Vector2(0.0, 0.03) * cell,
-			c + Vector2(-0.06, 0.24) * cell, c + Vector2(0.12, -0.03) * cell, c + Vector2(0.0, -0.03) * cell,
-		]), Color(1, 1, 1, 0.55) if done else shade)
+		sprite = "heavy-crate"
+	elif CRATE_NAMES.has(kind):
+		sprite = "crate-" + CRATE_NAMES[kind]
+	elif done:
+		sprite = "crate-on-target"
+	_spr(sprite, r.grow(-cell * 0.02))
+	if on_goal and not done:
+		draw_rect(r.grow(-cell * 0.1), Color(1, 0.3, 0.3, 0.7), false, cell * 0.04)
 
 
 func _draw_robot(pos: Vector2) -> void:
 	var r := _cell_rect(pos)
-	var body := Rect2(r.position + Vector2(0.17, 0.26) * cell, Vector2(0.66, 0.6) * cell)
 	if armed != "":
 		var glow := Color("ffd23f") if armed == "pull" else Color("ff5a36")
-		draw_circle(r.get_center(), cell * 0.5, Color(glow, 0.25 + 0.1 * sin(clock * 8.0)), true, -1.0, true)
-	var ant := Vector2(body.get_center().x, body.position.y)
-	draw_line(ant, ant - Vector2(0, cell * 0.14), C_PLAYER, cell * 0.05)
-	draw_circle(ant - Vector2(0, cell * 0.16), cell * 0.06, C_GOAL, true, -1.0, true)
-	draw_style_box(robot_style, body)
-	var visor := Rect2(body.position + Vector2(0.09, 0.12) * cell, Vector2(0.48, 0.22) * cell)
-	draw_rect(visor, C_EYE)
-	var look := Vector2(facing) * cell * 0.06
-	for s in [-1.0, 1.0]:
-		draw_circle(visor.get_center() + Vector2(s * cell * 0.11, 0) + look, cell * 0.05, C_PLAYER, true, -1.0, true)
+		draw_circle(r.get_center(), cell * 0.5, Color(glow, 0.3 + 0.1 * sin(clock * 8.0)), true, -1.0, true)
+	var name := "robot-down"
+	match facing:
+		Vector2i.UP: name = "robot-up"
+		Vector2i.LEFT: name = "robot-left"
+		Vector2i.RIGHT: name = "robot-right"
+	_spr(name, r)
+
 
 
 # --- HUD ------------------------------------------------------------------------
@@ -859,7 +784,7 @@ func _build_levels() -> void:
 	var top := HBoxContainer.new()
 	top.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	col.add_child(top)
-	var back := _button("<", _show_map)
+	var back := _icon_button("menu", _show_map)
 	back.custom_minimum_size = Vector2(96, 96)
 	top.add_child(back)
 	levels_title = _label("", 44, C_TEXT)
@@ -891,7 +816,7 @@ func _build_play() -> void:
 	top.offset_right = -16
 	top.offset_top = 36
 	top.offset_bottom = 136
-	var back := _button("<", _show_levels)
+	var back := _icon_button("menu", _show_levels)
 	back.custom_minimum_size = Vector2(96, 96)
 	top.add_child(back)
 	var titles := VBoxContainer.new()
@@ -938,6 +863,7 @@ func _build_play() -> void:
 	bottom.add_child(booster_row)
 	for b in BOOSTERS:
 		var btn := _button(BOOSTERS[b].label, _on_booster.bind(b))
+		btn.icon = Sprites.icon(BOOSTERS[b].icon)
 		btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		btn.custom_minimum_size = Vector2(0, 74)
 		btn.add_theme_font_size_override("font_size", 26)
@@ -948,10 +874,12 @@ func _build_play() -> void:
 	row.add_theme_constant_override("separation", 20)
 	bottom.add_child(row)
 	undo_button = _button("Undo", _undo)
+	undo_button.icon = Sprites.icon("undo")
 	undo_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	undo_button.custom_minimum_size = Vector2(0, 100)
 	row.add_child(undo_button)
 	var restart := _button("Restart", _restart)
+	restart.icon = Sprites.icon("restart")
 	restart.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	restart.custom_minimum_size = Vector2(0, 100)
 	row.add_child(restart)
@@ -1023,12 +951,9 @@ func _stars_view(n: int, radius: float) -> Control:
 		var got: int = c.get_meta("stars")
 		for i in 3:
 			var center := Vector2(radius * (1.2 + 2.3 * i), radius * 1.1)
-			var pts := PackedVector2Array()
-			for j in 10:
-				var a := -PI / 2.0 + j * PI / 5.0
-				var rr := radius if j % 2 == 0 else radius * 0.45
-				pts.append(center + Vector2(cos(a), sin(a)) * rr)
-			c.draw_colored_polygon(pts, C_STAR if i < got else Color(C_DIM, 0.3)))
+			var s: Array = Sprites.MAP["star-filled" if i < got else "star-empty"]
+			var sz := Vector2.ONE * radius * 2.6
+			c.draw_texture_rect_region(Sprites.sheet(s[0]), Rect2(center - sz / 2.0, sz), Rect2(s[1] * 128, s[2] * 128, 128, 128)))
 	return c
 
 
@@ -1052,8 +977,18 @@ func _button(text: String, action: Callable) -> Button:
 	return b
 
 
+func _icon_button(sprite: String, action: Callable) -> Button:
+	var b := _button("", action)
+	b.icon = Sprites.icon(sprite)
+	b.icon_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	b.expand_icon = true
+	b.add_theme_constant_override("icon_max_width", 64)
+	return b
+
+
 func _make_theme() -> Theme:
 	var t := Theme.new()
+	t.set_constant("icon_max_width", "Button", 48)
 	t.set_font_size("font_size", "Button", 38)
 	for st in ["normal", "hover", "pressed", "disabled"]:
 		var s := StyleBoxFlat.new()
