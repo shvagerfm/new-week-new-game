@@ -23,7 +23,7 @@ const BOOSTERS := {
 }
 
 const C_BG := Color("171a29")
-const C_FLOOR := Color("232740")
+const C_FLOOR := Color("23263a")
 const C_WALL := Color("3b4170")
 const C_WALL_EDGE := Color("2b3055")
 const C_GOAL := Color("ffb347")
@@ -40,7 +40,12 @@ const C_BUTTON_HOVER := Color("3a4068")
 const C_STAR := Color("ffd23f")
 const CRATE_NAMES := {"a": "red", "b": "blue", "c": "green"}
 const PAD_SPRITES := ["teleport-blue", "teleport-purple"]
-const C_FLOOR_BASE := Color("1d2034")
+const C_FLOOR_LINE := Color(1, 1, 1, 0.035)
+const C_WALL_TOP := Color("59628f")
+const C_WALL_SIDE := Color("2c3150")
+const C_WALL_HI := Color("8a93c2")
+const C_TARGET := Color("3fe0c0")
+const TARGET_GLOW := {"a": Color("ff6b6b"), "b": Color("5aa9ff"), "c": Color("6fd08c")}
 
 var zones: Array[Dictionary] = []
 var best := {}        # level id -> stars (1..3)
@@ -568,12 +573,10 @@ func _draw() -> void:
 	var on := lv.hazards_on(state)
 	for p in lv.inside:
 		_draw_floor(p, on)
-	for p in lv.walls:
-		if not state.blasted.has(p):
-			_spr("wall", _cell_rect(Vector2(p)))
+	_draw_walls()
 	for p in lv.goals:
 		if not state.boxes.has(p):
-			_spr("target" if lv.goals[p] == "" else "target-" + CRATE_NAMES[lv.goals[p]], _cell_rect(Vector2(p)))
+			_draw_target(p)
 
 	var k := 1.0 - pow(1.0 - anim_t, 3.0)
 	for p: Vector2i in state.boxes:
@@ -607,6 +610,60 @@ func _spr_rotated(sprite: String, r: Rect2, angle: float) -> void:
 	draw_set_transform(Vector2.ZERO)
 
 
+func _flat_floor(r: Rect2) -> void:
+	# Plain, low-contrast floor so it reads as background.
+	draw_rect(r, C_FLOOR)
+	draw_rect(r, C_FLOOR_LINE, false, maxf(1.0, cell * 0.015))
+
+
+func _is_wall_at(p: Vector2i) -> bool:
+	return lv.walls.has(p) and not state.blasted.has(p)
+
+
+## Walls are drawn as one solid mass: a light top face, a darker front face
+## where the wall meets open floor below, and a shadow cast onto the floor.
+func _draw_walls() -> void:
+	var side_h := cell * 0.2
+	for p: Vector2i in lv.walls:
+		if not _is_wall_at(p):
+			continue
+		var below := p + Vector2i.DOWN
+		var right := p + Vector2i.RIGHT
+		if lv.inside.has(below) and not _is_wall_at(below):
+			var fl := _cell_rect(Vector2(below))
+			draw_rect(Rect2(fl.position, Vector2(cell, cell * 0.28)), Color(0, 0, 0, 0.35))
+		if lv.inside.has(right) and not _is_wall_at(right):
+			var fr := _cell_rect(Vector2(right))
+			draw_rect(Rect2(fr.position, Vector2(cell * 0.14, cell)), Color(0, 0, 0, 0.22))
+	for p: Vector2i in lv.walls:
+		if not _is_wall_at(p):
+			continue
+		var r := _cell_rect(Vector2(p))
+		var open_below := not _is_wall_at(p + Vector2i.DOWN)
+		var top := r
+		if open_below:
+			top.size.y -= side_h
+			draw_rect(Rect2(r.position.x, r.end.y - side_h, cell, side_h), C_WALL_SIDE)
+			# Small orange lights on the front face, like the art's wall panels
+			draw_rect(Rect2(r.position.x + cell * 0.38, r.end.y - side_h * 0.6, cell * 0.24, side_h * 0.22), Color("ff9a3c", 0.7))
+		draw_rect(top.grow(0.5), C_WALL_TOP)
+		var edge := maxf(1.5, cell * 0.035)
+		if not _is_wall_at(p + Vector2i.UP):
+			draw_line(top.position, Vector2(top.end.x, top.position.y), C_WALL_HI, edge)
+		if not _is_wall_at(p + Vector2i.LEFT):
+			draw_line(top.position, Vector2(top.position.x, r.end.y), C_WALL_EDGE, edge)
+		if not _is_wall_at(p + Vector2i.RIGHT):
+			draw_line(Vector2(top.end.x, top.position.y), Vector2(top.end.x, r.end.y), C_WALL_EDGE, edge)
+
+
+func _draw_target(p: Vector2i) -> void:
+	var r := _cell_rect(Vector2(p))
+	var col: Color = C_TARGET if lv.goals[p] == "" else TARGET_GLOW[lv.goals[p]]
+	var pulse := 0.5 + 0.5 * sin(clock * 3.0 + p.x + p.y)
+	draw_circle(r.get_center(), cell * (0.42 + 0.06 * pulse), Color(col, 0.12 + 0.18 * pulse), true, -1.0, true)
+	_spr("target" if lv.goals[p] == "" else "target-" + CRATE_NAMES[lv.goals[p]], r.grow(-cell * (0.04 - 0.03 * pulse)))
+
+
 func _crate_done(p: Vector2i) -> bool:
 	if not lv.goals.has(p):
 		return false
@@ -615,13 +672,15 @@ func _crate_done(p: Vector2i) -> bool:
 
 func _draw_floor(p: Vector2i, on: bool) -> void:
 	var r := _cell_rect(Vector2(p))
-	draw_rect(r, C_FLOOR_BASE)
-	if lv.walls.has(p):  # blasted wall
-		_spr("floor", r, Color(0.8, 0.75, 0.7))
+	_flat_floor(r)
+	if lv.walls.has(p):  # blasted wall: rubble marks
+		for i in 3:
+			draw_circle(r.position + Vector2(0.25 + 0.25 * i, 0.3 + 0.2 * (i % 2)) * cell, cell * 0.05, C_WALL_SIDE)
 		return
 	if lv.crumble.has(p):
 		var st: String = state.crumbled.get(p, "")
-		_spr("broken-hole" if st == "pit" else ("floor" if st == "filled" else "crumbling-floor"), r)
+		if st != "filled":
+			_spr("broken-hole" if st == "pit" else "crumbling-floor", r)
 		return
 	if lv.ice.has(p):
 		_spr("ice", r)
@@ -633,18 +692,13 @@ func _draw_floor(p: Vector2i, on: bool) -> void:
 		_spr("fire-active" if on else "fire-off", r)
 	elif lv.holes.has(p):
 		if on:
-			_spr("floor", r)
 			_spr_rotated("vortex", r, -clock * 1.5)
 		else:
-			_spr("floor", r)
 			_spr("vortex", r.grow(-cell * 0.2), Color(0.5, 0.5, 0.6, 0.35))
 	elif lv.teleports.has(p):
 		_spr(PAD_SPRITES[_pad_index(p)], r, Color(1, 1, 1, 0.85 + 0.15 * sin(clock * 4.0)))
 	elif lv.doors.has(p):
-		_spr("floor", r)
 		_spr("door-open" if state.open.has(p) else "door-closed", r)
-	else:
-		_spr("floor", r)
 	if lv.has_pickup(state, p):
 		var bob := Vector2(0, sin(clock * 3.0 + p.x) * cell * 0.04)
 		_spr("key-card" if lv.pickups[p] == "k" else "plus-five-moves", Rect2(r.position + bob, r.size).grow(-cell * 0.14))
@@ -664,9 +718,14 @@ func _pad_index(p: Vector2i) -> int:
 
 
 func _draw_crate(pos: Vector2, kind: String, done: bool, on_goal: bool) -> void:
-	var r := _cell_rect(pos)
+	var r := _cell_rect(pos).grow(-cell * 0.1)  # 80% of the tile, so the floor shows around it
 	if done:
-		draw_circle(r.get_center(), cell * 0.5, Color(C_DONE, 0.25 + 0.1 * sin(clock * 3.0)), true, -1.0, true)
+		draw_circle(r.get_center(), cell * 0.5, Color(C_TARGET, 0.3 + 0.12 * sin(clock * 3.0)), true, -1.0, true)
+	# Drop shadow
+	var sh := StyleBoxFlat.new()
+	sh.bg_color = Color(0, 0, 0, 0.45)
+	sh.set_corner_radius_all(int(cell * 0.12))
+	draw_style_box(sh, Rect2(r.position + Vector2(0.05, 0.09) * cell, r.size))
 	var sprite := "crate"
 	if kind == "&":
 		sprite = "heavy-crate"
@@ -674,7 +733,7 @@ func _draw_crate(pos: Vector2, kind: String, done: bool, on_goal: bool) -> void:
 		sprite = "crate-" + CRATE_NAMES[kind]
 	elif done:
 		sprite = "crate-on-target"
-	_spr(sprite, r.grow(-cell * 0.02))
+	_spr(sprite, r)
 	if on_goal and not done:
 		draw_rect(r.grow(-cell * 0.1), Color(1, 0.3, 0.3, 0.7), false, cell * 0.04)
 
