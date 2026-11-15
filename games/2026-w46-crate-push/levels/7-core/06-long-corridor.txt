@@ -1,5 +1,6 @@
 ; Long corridor
 ; limit 7
+; par 10
 ############
 #@$       .#
 # t        #

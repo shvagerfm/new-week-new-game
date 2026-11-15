@@ -1,0 +1,10 @@
+; Fill the gap
+; tip A crate pushed into a hole fills it, and the floor is good again.
+; par 21
+###########
+#   #     #
+#   #  $  #
+#@ .% $   #
+#   #     #
+#   #     #
+###########

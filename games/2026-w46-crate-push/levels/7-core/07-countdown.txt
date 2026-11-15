@@ -1,5 +1,6 @@
 ; Countdown
 ; limit 22
+; par 21
 ##########
 #  .     #
 # $ # $  #

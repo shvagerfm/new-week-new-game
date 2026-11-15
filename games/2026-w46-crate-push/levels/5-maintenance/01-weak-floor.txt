@@ -1,0 +1,8 @@
+; Weak floor
+; tip Cracked floor gives way once Kip steps off it. Kip can't cross a hole.
+; par 6
+##########
+#   %%   #
+#@ $%%  .#
+#   %%   #
+##########
