@@ -24,7 +24,7 @@ Swipe to move. Keep dragging to keep walking. On a keyboard, use the arrows or W
 | Esc | Back |
 | Enter, Space | Default button on a popup |
 
-Tap the CRATE PUSH title seven times to unlock every zone, for testing.
+Tap the CRATE PUSH logo on the main menu seven times to unlock every zone, for testing.
 
 ## Stars and tools
 
@@ -92,3 +92,9 @@ godot --headless --path games/2026-w46-crate-push --script tests/generate.gd -- 
 ```
 
 The checker, the hint and the game all use the same rules in `rules.gd`, so they always agree.
+
+## Art
+
+- `art/source/sheet-1..4` hold the board and HUD sprites (128 px tiles). `sprites.gd` maps names to tiles.
+- `art/source/ui/crate-push-ui-assets.png` holds the menu art: logo, buttons, level tiles, stars, panel frame and zone icons. Some pieces cross the 256 px grid, so `ui_art.gd` and `ui/atlas.json` store the measured bounds of each piece. Buttons and the panel frame are stretched as 9-slice boxes.
+- The mockups in `art/source/ui/` are reference only and are not used in the game.

@@ -37,7 +37,9 @@ const C_TEXT := Color("eeeeff")
 const C_DIM := Color("9aa0c0")
 const C_BUTTON := Color("2d3252")
 const C_BUTTON_HOVER := Color("3a4068")
-const C_STAR := Color("ffd23f")
+const C_STAR := Color("3fe0c0")
+const C_ORANGE := Color("ff8a1f")
+const C_INK := Color("0d0f1a")
 const CRATE_NAMES := {"a": "red", "b": "blue", "c": "green"}
 const PAD_SPRITES := ["teleport-blue", "teleport-purple"]
 const C_FLOOR_LINE := Color(1, 1, 1, 0.035)
@@ -86,12 +88,16 @@ var title_taps := 0
 
 # UI
 var ui: Control
+var menu_screen: Control
+var menu_stars: Label
+var continue_button: Button
 var map_screen: Control
 var zone_list: VBoxContainer
 var map_stars: Label
 var levels_screen: Control
 var levels_title: Label
 var levels_story: Label
+var levels_progress: Control
 var levels_grid: GridContainer
 var play_hud: Control
 var title_label: Label
@@ -114,10 +120,40 @@ func _ready() -> void:
 	_load_progress()
 	_build_ui()
 	get_viewport().size_changed.connect(_layout)
-	_show_map()
+	_show_menu()
 
 
 # --- Screens --------------------------------------------------------------------
+
+func _show_menu() -> void:
+	screen = "menu"
+	var got := 0
+	var total := 0
+	for z in zones:
+		for l in z.levels:
+			got += best.get(l.id, 0)
+			total += 3
+	menu_stars.text = "%d / %d" % [got, total]
+	continue_button.visible = not best.is_empty() and _next_level() != Vector2i(-1, -1)
+	_set_screen(menu_screen)
+
+
+## The first open level without a win, or (-1, -1) when every level is won.
+func _next_level() -> Vector2i:
+	for z in zones.size():
+		if not _zone_open(z):
+			break
+		for i in zones[z].levels.size():
+			if not best.has(zones[z].levels[i].id):
+				return Vector2i(z, i)
+	return Vector2i(-1, -1)
+
+
+func _continue() -> void:
+	var n := _next_level()
+	if n.x >= 0:
+		_start_level(n.x, n.y)
+
 
 func _show_map() -> void:
 	screen = "map"
@@ -125,6 +161,7 @@ func _show_map() -> void:
 		c.queue_free()
 	var total := 0
 	var got := 0
+	var current := _next_level().x
 	for i in zones.size():
 		var z: Dictionary = zones[i]
 		var open := _zone_open(i)
@@ -133,26 +170,73 @@ func _show_map() -> void:
 			stars += best.get(l.id, 0)
 		total += z.levels.size() * 3
 		got += stars
-		var b := _button("", _open_zone.bind(i))
-		b.custom_minimum_size = Vector2(0, 118)
-		b.disabled = not open
-		b.alignment = HORIZONTAL_ALIGNMENT_LEFT
-		b.text = "  %d   %s" % [i + 1, z.name if open else "Locked"]
-		b.add_theme_font_size_override("font_size", 38)
-		var right := _label("%d / %d" % [stars, z.levels.size() * 3] if open else "", 28, C_STAR)
-		right.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-		b.add_child(right)
-		right.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-		right.offset_right = -28
-		var stripe := ColorRect.new()
-		stripe.color = z.color if open else C_DIM.darkened(0.5)
-		stripe.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		b.add_child(stripe)
-		stripe.set_anchors_and_offsets_preset(Control.PRESET_LEFT_WIDE)
-		stripe.offset_right = 10
-		zone_list.add_child(b)
-	map_stars.text = "%d / %d stars" % [got, total]
+		zone_list.add_child(_zone_row(i, open, stars, i == current))
+	map_stars.text = "%d / %d" % [got, total]
 	_set_screen(map_screen)
+
+
+func _zone_row(i: int, open: bool, stars: int, current: bool) -> Button:
+	var z: Dictionary = zones[i]
+	var b := _button("", _open_zone.bind(i))
+	b.custom_minimum_size = Vector2(0, 150)
+	b.disabled = not open
+	var m := Vector4(44, 44, 44, 44)
+	var c := Vector4(30, 18, 30, 18)
+	b.add_theme_stylebox_override("normal", UiArt.box("panel-frame", m, c))
+	b.add_theme_stylebox_override("hover", UiArt.box("panel-frame", m, c, Color(1.15, 1.15, 1.2)))
+	b.add_theme_stylebox_override("pressed", UiArt.box("panel-frame", m, c, Color(0.8, 0.8, 0.85)))
+	b.add_theme_stylebox_override("disabled", UiArt.box("panel-frame", m, c, Color(0.6, 0.6, 0.65)))
+	var row := HBoxContainer.new()
+	row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	row.add_theme_constant_override("separation", 22)
+	b.add_child(row)
+	row.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	row.offset_left = 40
+	row.offset_right = -34
+	row.offset_top = 16
+	row.offset_bottom = -16
+	var icon := _ui_rect(UiArt.zone_icon(z.id), Vector2(104, 104))
+	if not open:
+		icon.modulate = Color(0.45, 0.45, 0.5)
+	row.add_child(icon)
+	var names := VBoxContainer.new()
+	names.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	names.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	names.alignment = BoxContainer.ALIGNMENT_CENTER
+	row.add_child(names)
+	var name_label := _label(z.name, 36, C_TEXT if open else C_DIM)
+	name_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
+	names.add_child(name_label)
+	var sub := _label("Zone %d" % (i + 1), 22, z.color if open else C_DIM)
+	sub.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
+	names.add_child(sub)
+	if open:
+		var count := HBoxContainer.new()
+		count.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		count.add_theme_constant_override("separation", 6)
+		count.add_child(_ui_rect("star-filled", Vector2(40, 40)))
+		var n := _label("%d/%d" % [stars, z.levels.size() * 3], 28, C_STAR)
+		n.autowrap_mode = TextServer.AUTOWRAP_OFF
+		count.add_child(n)
+		row.add_child(count)
+	else:
+		row.add_child(_ui_rect("padlock", Vector2(56, 64)))
+	if current:
+		var ring := Panel.new()
+		ring.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		var st := StyleBoxFlat.new()
+		st.draw_center = false
+		st.border_color = C_ORANGE
+		st.set_border_width_all(6)
+		st.set_corner_radius_all(20)
+		ring.add_theme_stylebox_override("panel", st)
+		b.add_child(ring)
+		ring.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		ring.offset_left = 4
+		ring.offset_top = 4
+		ring.offset_right = -4
+		ring.offset_bottom = -4
+	return b
 
 
 func _open_zone(i: int) -> void:
@@ -170,30 +254,51 @@ func _open_zone(i: int) -> void:
 func _show_levels() -> void:
 	screen = "levels"
 	var z: Dictionary = zones[zone_i]
-	levels_title.text = "%d  %s" % [zone_i + 1, z.name]
+	levels_title.text = z.name.to_upper()
 	levels_title.add_theme_color_override("font_color", z.color)
 	levels_story.text = z.story.get_slice("\n", 0)
 	for c in levels_grid.get_children():
 		c.queue_free()
+	var done := 0
+	var current := _next_level()
 	for i in z.levels.size():
 		var id: String = z.levels[i].id
+		if best.has(id):
+			done += 1
+		var open := _level_open(zone_i, i)
+		var art := "level-unlocked"
+		if not open:
+			art = "level-locked"
+		elif current == Vector2i(zone_i, i):
+			art = "level-current"
 		var b := _button("", _start_level.bind(zone_i, i))
-		b.custom_minimum_size = Vector2(140, 140)
-		b.disabled = not _level_open(zone_i, i)
-		var box := VBoxContainer.new()
-		box.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		box.alignment = BoxContainer.ALIGNMENT_CENTER
-		b.add_child(box)
-		box.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-		box.add_child(_label(str(i + 1), 44, C_TEXT if not b.disabled else C_DIM))
-		var st := _stars_view(best.get(id, 0), 15.0)
-		box.add_child(st)
+		b.custom_minimum_size = Vector2(196, 190)
+		b.disabled = not open
+		var m := Vector4(48, 48, 48, 48)
+		b.add_theme_stylebox_override("normal", UiArt.box(art, m))
+		b.add_theme_stylebox_override("hover", UiArt.box(art, m, Vector4.ZERO, Color(1.12, 1.12, 1.15)))
+		b.add_theme_stylebox_override("pressed", UiArt.box(art, m, Vector4.ZERO, Color(0.8, 0.8, 0.85)))
+		b.add_theme_stylebox_override("disabled", UiArt.box(art, m))
+		if open:
+			var box := VBoxContainer.new()
+			box.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			box.alignment = BoxContainer.ALIGNMENT_CENTER
+			box.add_theme_constant_override("separation", -4)
+			b.add_child(box)
+			box.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+			box.offset_top = 10
+			box.offset_bottom = -34
+			box.add_child(_label(str(i + 1), 60, C_TEXT))
+			box.add_child(_stars_view(best.get(id, 0), 18.0))
 		levels_grid.add_child(b)
+	levels_progress.set_meta("done", done)
+	levels_progress.set_meta("total", z.levels.size())
+	levels_progress.queue_redraw()
 	_set_screen(levels_screen)
 
 
 func _set_screen(c: Control) -> void:
-	for s in [map_screen, levels_screen, play_hud]:
+	for s in [menu_screen, map_screen, levels_screen, play_hud]:
 		s.visible = s == c
 	overlay.hide()
 	queue_redraw()
@@ -502,6 +607,8 @@ func _back() -> void:
 		_show_levels()
 	elif screen == "levels":
 		_show_map()
+	elif screen == "map":
+		_show_menu()
 
 
 func _on_title_tapped() -> void:
@@ -513,7 +620,7 @@ func _on_title_tapped() -> void:
 				if not best.has(l.id):
 					best[l.id] = 1
 		_save_progress()
-		_show_map()
+		_show_menu()
 
 
 # --- Animation & drawing --------------------------------------------------------
@@ -793,39 +900,104 @@ func _build_ui() -> void:
 	ui.theme = _make_theme()
 	layer.add_child(ui)
 	ui.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_build_menu()
 	_build_map()
 	_build_levels()
 	_build_play()
 	_build_overlay()
 
 
+func _build_menu() -> void:
+	menu_screen = _full_rect(ui)
+	var col := VBoxContainer.new()
+	col.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	col.add_theme_constant_override("separation", 26)
+	col.alignment = BoxContainer.ALIGNMENT_CENTER
+	menu_screen.add_child(col)
+	col.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	col.offset_left = 60
+	col.offset_right = -60
+	col.offset_top = 60
+	col.offset_bottom = -60
+	var logo := _ui_rect("logo", Vector2(520, 450))
+	logo.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	logo.mouse_filter = Control.MOUSE_FILTER_STOP
+	logo.gui_input.connect(func(e: InputEvent) -> void:
+		if e is InputEventMouseButton and e.pressed:
+			_on_title_tapped())
+	col.add_child(logo)
+	# Kip next to a crate, drawn with the game's own sprites.
+	var hero := HBoxContainer.new()
+	hero.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	hero.alignment = BoxContainer.ALIGNMENT_CENTER
+	hero.add_theme_constant_override("separation", 0)
+	for sprite in ["robot-right", "crate", "target"]:
+		var r := TextureRect.new()
+		r.texture = Sprites.icon(sprite)
+		r.custom_minimum_size = Vector2(170, 170)
+		r.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		r.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		r.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		hero.add_child(r)
+	col.add_child(hero)
+	col.add_child(_label("Kip the cargo robot is restarting a dark space station, one battery crate at a time.", 26, C_DIM))
+	var gap := Control.new()
+	gap.custom_minimum_size = Vector2(0, 20)
+	gap.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	col.add_child(gap)
+	var play := _primary_button("Play", _show_map)
+	play.custom_minimum_size = Vector2(0, 140)
+	play.add_theme_font_size_override("font_size", 56)
+	col.add_child(play)
+	continue_button = _button("Continue", _continue)
+	continue_button.custom_minimum_size = Vector2(0, 118)
+	col.add_child(continue_button)
+	var count := HBoxContainer.new()
+	count.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	count.alignment = BoxContainer.ALIGNMENT_CENTER
+	count.add_theme_constant_override("separation", 10)
+	count.add_child(_ui_rect("star-filled", Vector2(44, 44)))
+	menu_stars = _label("", 30, C_STAR)
+	menu_stars.autowrap_mode = TextServer.AUTOWRAP_OFF
+	count.add_child(menu_stars)
+	col.add_child(count)
+
+
 func _build_map() -> void:
 	map_screen = _full_rect(ui)
 	var col := VBoxContainer.new()
 	col.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	col.add_theme_constant_override("separation", 14)
+	col.add_theme_constant_override("separation", 18)
 	map_screen.add_child(col)
 	col.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	col.offset_left = 32
-	col.offset_right = -32
-	col.offset_top = 60
-	col.offset_bottom = -40
-	var title := _label("CRATE PUSH", 64, C_GOAL)
-	title.mouse_filter = Control.MOUSE_FILTER_STOP
-	title.gui_input.connect(func(e: InputEvent) -> void:
-		if e is InputEventMouseButton and e.pressed:
-			_on_title_tapped())
-	col.add_child(title)
-	col.add_child(_label("Kip the cargo robot is restarting a dark space station, one battery crate at a time.", 26, C_DIM))
-	map_stars = _label("", 28, C_STAR)
-	col.add_child(map_stars)
+	col.offset_left = 28
+	col.offset_right = -28
+	col.offset_top = 40
+	col.offset_bottom = -30
+	var top := HBoxContainer.new()
+	top.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	top.add_theme_constant_override("separation", 16)
+	col.add_child(top)
+	top.add_child(_back_button(_show_menu))
+	var title := _label("STATION MAP", 44, C_TEXT)
+	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	top.add_child(title)
+	var count := HBoxContainer.new()
+	count.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	count.add_theme_constant_override("separation", 4)
+	count.custom_minimum_size = Vector2(96, 0)
+	count.add_child(_ui_rect("star-filled", Vector2(34, 34)))
+	map_stars = _label("", 24, C_STAR)
+	map_stars.autowrap_mode = TextServer.AUTOWRAP_OFF
+	count.add_child(map_stars)
+	top.add_child(count)
 	var scroll := ScrollContainer.new()
 	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	col.add_child(scroll)
 	zone_list = VBoxContainer.new()
 	zone_list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	zone_list.add_theme_constant_override("separation", 14)
+	zone_list.add_theme_constant_override("separation", 12)
 	scroll.add_child(zone_list)
 
 
@@ -833,7 +1005,7 @@ func _build_levels() -> void:
 	levels_screen = _full_rect(ui)
 	var col := VBoxContainer.new()
 	col.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	col.add_theme_constant_override("separation", 20)
+	col.add_theme_constant_override("separation", 22)
 	levels_screen.add_child(col)
 	col.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	col.offset_left = 32
@@ -842,11 +1014,10 @@ func _build_levels() -> void:
 	col.offset_bottom = -40
 	var top := HBoxContainer.new()
 	top.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	top.add_theme_constant_override("separation", 16)
 	col.add_child(top)
-	var back := _icon_button("menu", _show_map)
-	back.custom_minimum_size = Vector2(96, 96)
-	top.add_child(back)
-	levels_title = _label("", 44, C_TEXT)
+	top.add_child(_back_button(_show_map))
+	levels_title = _label("", 46, C_TEXT)
 	levels_title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	top.add_child(levels_title)
 	var spacer := Control.new()
@@ -855,13 +1026,47 @@ func _build_levels() -> void:
 	top.add_child(spacer)
 	levels_story = _label("", 26, C_DIM)
 	col.add_child(levels_story)
+	levels_progress = Control.new()
+	levels_progress.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	levels_progress.custom_minimum_size = Vector2(0, 52)
+	levels_progress.set_meta("done", 0)
+	levels_progress.set_meta("total", 1)
+	var font := ThemeDB.fallback_font
+	levels_progress.draw.connect(func() -> void:
+		var done: int = levels_progress.get_meta("done")
+		var total: int = maxi(1, levels_progress.get_meta("total"))
+		var r := Rect2(Vector2.ZERO, levels_progress.size)
+		var back := StyleBoxFlat.new()
+		back.bg_color = Color("10131f")
+		back.border_color = Color("59628f")
+		back.set_border_width_all(3)
+		back.set_corner_radius_all(26)
+		levels_progress.draw_style_box(back, r)
+		if done > 0:
+			var fill := StyleBoxFlat.new()
+			fill.bg_color = C_STAR
+			fill.set_corner_radius_all(20)
+			var inner := r.grow(-7)
+			inner.size.x = maxf(inner.size.y, inner.size.x * done / total)
+			levels_progress.draw_style_box(fill, inner)
+		var text := "%d / %d COMPLETE" % [done, total]
+		var w := font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, 24).x
+		var pos := Vector2(r.size.x - w - 26, r.size.y / 2 + 9)
+		levels_progress.draw_string_outline(font, pos, text, HORIZONTAL_ALIGNMENT_LEFT, -1, 24, 6, C_INK)
+		levels_progress.draw_string(font, pos, text, HORIZONTAL_ALIGNMENT_LEFT, -1, 24, C_TEXT))
+	col.add_child(levels_progress)
+	var scroll := ScrollContainer.new()
+	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	col.add_child(scroll)
 	var center := CenterContainer.new()
 	center.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	col.add_child(center)
+	center.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	scroll.add_child(center)
 	levels_grid = GridContainer.new()
-	levels_grid.columns = 4
-	levels_grid.add_theme_constant_override("h_separation", 18)
-	levels_grid.add_theme_constant_override("v_separation", 18)
+	levels_grid.columns = 3
+	levels_grid.add_theme_constant_override("h_separation", 26)
+	levels_grid.add_theme_constant_override("v_separation", 22)
 	center.add_child(levels_grid)
 
 
@@ -875,9 +1080,7 @@ func _build_play() -> void:
 	top.offset_right = -16
 	top.offset_top = 36
 	top.offset_bottom = 136
-	var back := _icon_button("menu", _show_levels)
-	back.custom_minimum_size = Vector2(96, 96)
-	top.add_child(back)
+	top.add_child(_back_button(_show_levels))
 	var titles := VBoxContainer.new()
 	titles.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	titles.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -980,8 +1183,9 @@ func _show_overlay(title: String, text: String, stars: int, buttons: Array) -> v
 	overlay_stars.queue_redraw()
 	for c in overlay_buttons.get_children():
 		c.queue_free()
-	for b in buttons:
-		var btn := _button(b[0], b[1])
+	for k in buttons.size():
+		var b: Array = buttons[k]
+		var btn := _primary_button(b[0], b[1]) if k == buttons.size() - 1 else _button(b[0], b[1])
 		btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		btn.custom_minimum_size = Vector2(0, 104)
 		overlay_buttons.add_child(btn)
@@ -1010,10 +1214,20 @@ func _stars_view(n: int, radius: float) -> Control:
 		var got: int = c.get_meta("stars")
 		for i in 3:
 			var center := Vector2(radius * (1.2 + 2.3 * i), radius * 1.1)
-			var s: Array = Sprites.MAP["star-filled" if i < got else "star-empty"]
-			var sz := Vector2.ONE * radius * 2.6
-			c.draw_texture_rect_region(Sprites.sheet(s[0]), Rect2(center - sz / 2.0, sz), Rect2(s[1] * 128, s[2] * 128, 128, 128)))
+			var sz := Vector2.ONE * radius * 2.4
+			c.draw_texture_rect_region(UiArt.SHEET, Rect2(center - sz / 2.0, sz),
+					UiArt.MAP["star-filled" if i < got else "star-empty"]))
 	return c
+
+
+func _ui_rect(name: String, size: Vector2) -> TextureRect:
+	var r := TextureRect.new()
+	r.texture = UiArt.tex(name)
+	r.custom_minimum_size = size
+	r.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	r.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	r.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	return r
 
 
 func _label(text: String, size: int, color: Color) -> Label:
@@ -1036,12 +1250,30 @@ func _button(text: String, action: Callable) -> Button:
 	return b
 
 
-func _icon_button(sprite: String, action: Callable) -> Button:
+## The orange arrow from the UI sheet, with no button frame around it.
+func _back_button(action: Callable) -> Button:
 	var b := _button("", action)
-	b.icon = Sprites.icon(sprite)
+	b.custom_minimum_size = Vector2(96, 96)
+	b.icon = UiArt.tex("back")
 	b.icon_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	b.expand_icon = true
-	b.add_theme_constant_override("icon_max_width", 64)
+	b.add_theme_constant_override("icon_max_width", 84)
+	var empty := StyleBoxEmpty.new()
+	for st in ["normal", "hover", "pressed", "focus"]:
+		b.add_theme_stylebox_override(st, empty)
+	b.add_theme_color_override("icon_hover_color", Color(1.2, 1.2, 1.2))
+	b.add_theme_color_override("icon_pressed_color", Color(0.75, 0.75, 0.75))
+	return b
+
+
+func _primary_button(text: String, action: Callable) -> Button:
+	var b := _button(text, action)
+	var m := Vector4(56, 44, 56, 50)
+	var c := Vector4(30, 6, 30, 14)
+	b.add_theme_stylebox_override("normal", UiArt.box("primary-normal", m, c))
+	b.add_theme_stylebox_override("hover", UiArt.box("primary-normal", m, c, Color(1.1, 1.1, 1.1)))
+	b.add_theme_stylebox_override("pressed", UiArt.box("primary-pressed", m, c))
+	b.add_theme_color_override("font_pressed_color", C_TEXT)
 	return b
 
 
@@ -1049,17 +1281,19 @@ func _make_theme() -> Theme:
 	var t := Theme.new()
 	t.set_constant("icon_max_width", "Button", 48)
 	t.set_font_size("font_size", "Button", 38)
-	for st in ["normal", "hover", "pressed", "disabled"]:
-		var s := StyleBoxFlat.new()
-		s.bg_color = C_BUTTON_HOVER if st == "hover" or st == "pressed" else C_BUTTON
-		if st == "disabled":
-			s.bg_color.a = 0.45
-		s.set_corner_radius_all(22)
-		s.content_margin_left = 14
-		s.content_margin_right = 14
-		t.set_stylebox(st, "Button", s)
+	var m := Vector4(50, 40, 50, 46)
+	var c := Vector4(20, 4, 20, 10)
+	t.set_stylebox("normal", "Button", UiArt.box("secondary", m, c))
+	t.set_stylebox("hover", "Button", UiArt.box("secondary", m, c, Color(1.1, 1.1, 1.15)))
+	t.set_stylebox("pressed", "Button", UiArt.box("secondary", m, c, Color(0.78, 0.78, 0.85)))
+	t.set_stylebox("disabled", "Button", UiArt.box("secondary", m, c, Color(0.55, 0.55, 0.6, 0.6)))
+	t.set_stylebox("focus", "Button", StyleBoxEmpty.new())
 	t.set_color("font_color", "Button", C_TEXT)
 	t.set_color("font_hover_color", "Button", C_TEXT)
 	t.set_color("font_pressed_color", "Button", C_GOAL)
-	t.set_color("font_disabled_color", "Button", Color(C_DIM, 0.5))
+	t.set_color("font_disabled_color", "Button", Color(C_DIM, 0.6))
+	t.set_color("font_outline_color", "Button", C_INK)
+	t.set_constant("outline_size", "Button", 10)
+	t.set_color("font_outline_color", "Label", C_INK)
+	t.set_constant("outline_size", "Label", 8)
 	return t
