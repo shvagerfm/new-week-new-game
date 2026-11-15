@@ -915,8 +915,7 @@ func _build_menu() -> void:
 	col.alignment = BoxContainer.ALIGNMENT_CENTER
 	menu_screen.add_child(col)
 	col.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	col.offset_left = 60
-	col.offset_right = -60
+	_cap_width(col, 60, 600)
 	col.offset_top = 60
 	col.offset_bottom = -60
 	var logo := _ui_rect("logo", Vector2(520, 450))
@@ -970,8 +969,7 @@ func _build_map() -> void:
 	col.add_theme_constant_override("separation", 18)
 	map_screen.add_child(col)
 	col.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	col.offset_left = 28
-	col.offset_right = -28
+	_cap_width(col, 28, 664)
 	col.offset_top = 40
 	col.offset_bottom = -30
 	var top := HBoxContainer.new()
@@ -1008,8 +1006,7 @@ func _build_levels() -> void:
 	col.add_theme_constant_override("separation", 22)
 	levels_screen.add_child(col)
 	col.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	col.offset_left = 32
-	col.offset_right = -32
+	_cap_width(col, 32, 656)
 	col.offset_top = 40
 	col.offset_bottom = -40
 	var top := HBoxContainer.new()
@@ -1076,8 +1073,7 @@ func _build_play() -> void:
 	top.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	play_hud.add_child(top)
 	top.set_anchors_and_offsets_preset(Control.PRESET_TOP_WIDE)
-	top.offset_left = 16
-	top.offset_right = -16
+	_cap_width(top, 16, 688)
 	top.offset_top = 36
 	top.offset_bottom = 136
 	top.add_child(_back_button(_show_levels))
@@ -1098,8 +1094,7 @@ func _build_play() -> void:
 	tip_label = _label("", 26, C_DIM)
 	play_hud.add_child(tip_label)
 	tip_label.set_anchors_and_offsets_preset(Control.PRESET_TOP_WIDE)
-	tip_label.offset_left = 30
-	tip_label.offset_right = -30
+	_cap_width(tip_label, 30, 660)
 	tip_label.offset_top = 132
 	tip_label.offset_bottom = 186
 
@@ -1114,8 +1109,7 @@ func _build_play() -> void:
 	bottom.add_theme_constant_override("separation", 14)
 	play_hud.add_child(bottom)
 	bottom.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_WIDE)
-	bottom.offset_left = 24
-	bottom.offset_right = -24
+	_cap_width(bottom, 24, 672)
 	bottom.offset_top = -BOTTOM_BAR + 20
 	bottom.offset_bottom = -36
 	bottom.alignment = BoxContainer.ALIGNMENT_END
@@ -1159,8 +1153,7 @@ func _build_overlay() -> void:
 	box.add_theme_constant_override("separation", 28)
 	overlay.add_child(box)
 	box.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	box.offset_left = 50
-	box.offset_right = -50
+	_cap_width(box, 50, 620)
 	overlay_title = _label("", 64, C_GOAL)
 	box.add_child(overlay_title)
 	overlay_stars = _stars_view(0, 48.0)
@@ -1194,6 +1187,17 @@ func _show_overlay(title: String, text: String, stars: int, buttons: Array) -> v
 
 func _hide_overlay() -> void:
 	overlay.hide()
+
+
+## Keeps c centered and at most max_w wide, with at least margin on each side,
+## so menus don't stretch across wide (desktop) screens.
+func _cap_width(c: Control, margin: float, max_w: float) -> void:
+	var fit := func() -> void:
+		var side := margin + maxf(0.0, (ui.size.x - 2.0 * margin - max_w) / 2.0)
+		c.offset_left = side
+		c.offset_right = -side
+	fit.call()
+	ui.resized.connect(fit)
 
 
 func _full_rect(parent: Control) -> Control:
