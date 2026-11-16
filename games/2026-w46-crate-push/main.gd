@@ -944,6 +944,8 @@ func _draw_floor(p: Vector2i, on: bool) -> void:
 		_spr("switch-pressed" if state.boxes.has(p) else "switch-up", r)
 	elif lv.fire.has(p):
 		_spr("fire-active" if on else "fire-off", r)
+		if on:
+			_draw_flame(r, p)
 	elif lv.holes.has(p):
 		if on:
 			_spr_rotated("vortex", r, -clock * 1.5)
@@ -956,6 +958,38 @@ func _draw_floor(p: Vector2i, on: bool) -> void:
 	if lv.has_pickup(state, p):
 		var bob := Vector2(0, sin(clock * 3.0 + p.x) * cell * 0.04)
 		_spr("key-card" if lv.pickups[p] == "k" else "plus-five-moves", Rect2(r.position + bob, r.size).grow(-cell * 0.14))
+
+
+## Living fire on top of the burner sprite: a flickering glow, a flame that
+## sways and changes height, and sparks that float up. Each burner gets its own
+## phase so a row of them doesn't move in step.
+func _draw_flame(r: Rect2, p: Vector2i) -> void:
+	var ph := float(p.x * 7 + p.y * 13)
+	var f := 0.5 + 0.25 * sin(clock * 11.0 + ph) + 0.25 * sin(clock * 17.3 + ph * 2.0)
+	var c := r.get_center()
+	# Glow
+	draw_circle(c, cell * (0.36 + 0.05 * f), Color(1.0, 0.45, 0.1, 0.10 + 0.10 * f), true, -1.0, true)
+	# Flame: outer orange tongue, inner yellow core
+	var sway := sin(clock * 5.0 + ph) * cell * 0.03
+	_flame_shape(c + Vector2(0, cell * 0.17), cell * 0.15, cell * (0.30 + 0.08 * f), sway, Color(1.0, 0.5, 0.1, 0.55))
+	_flame_shape(c + Vector2(0, cell * 0.18), cell * 0.08, cell * (0.17 + 0.06 * f), sway * 1.4, Color(1.0, 0.9, 0.4, 0.7))
+	# Sparks
+	for k in 3:
+		var t := fmod(clock * 0.7 + k / 3.0 + ph * 0.13, 1.0)
+		var pos := c + Vector2(sin(t * 6.0 + k * 2.0 + ph) * cell * 0.12, cell * 0.05 - t * cell * 0.55)
+		draw_circle(pos, cell * 0.03 * (1.0 - t * 0.6), Color(1.0, 0.8, 0.35, 1.0 - t), true, -1.0, true)
+
+
+## A teardrop: round bottom at base with radius w, pointed tip height h above.
+func _flame_shape(base: Vector2, w: float, h: float, sway: float, col: Color) -> void:
+	var pts := PackedVector2Array()
+	for i in 9:
+		var a := PI * i / 8.0  # right side, round bottom, left side
+		pts.append(base + Vector2(cos(a) * w, sin(a) * w * 0.8))
+	pts.append(base + Vector2(-w * 0.7, -h * 0.45) + Vector2(sway * 0.5, 0))
+	pts.append(base + Vector2(sway, -h))
+	pts.append(base + Vector2(w * 0.7, -h * 0.45) + Vector2(sway * 0.5, 0))
+	draw_colored_polygon(pts, col)
 
 
 func _pad_index(p: Vector2i) -> int:
