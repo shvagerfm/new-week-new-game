@@ -18,7 +18,8 @@ const HERO_CELL := 120.0  # menu animation tile size
 const HERO_LOOP := 4.4    # seconds per loop of the menu animation
 const RIM := 0.16  # outer walls are drawn as a thin rim this many cells thick
 const SWIPE_MIN := 36.0
-const MOVE_TIME := 0.09
+const MOVE_TIME := 0.12
+const STEP_TIME := 0.32  # the robot's hop, lean and dust after each step
 const BUMP_TIME := 0.12
 
 const BOOSTERS := {
@@ -83,6 +84,9 @@ var player_from := Vector2.ZERO
 var crate_moves := {}  # new pos -> old pos
 var bump_t := 1.0
 var bump_dir := Vector2.ZERO
+var step_t := 1.0
+var step_dir := Vector2.ZERO
+var step_push := false
 var clock := 0.0
 
 # Layout
@@ -701,6 +705,7 @@ func _process(delta: float) -> void:
 			_try_move(hold_dir)
 	anim_t = minf(anim_t + delta / MOVE_TIME, 1.0)
 	bump_t = minf(bump_t + delta / BUMP_TIME, 1.0)
+	step_t = minf(step_t + delta / STEP_TIME, 1.0)
 	queue_redraw()
 
 
@@ -712,6 +717,10 @@ func _start_animation(old: Dictionary, new: Dictionary) -> void:
 	if gone.size() == 1 and came.size() == 1 and _straight(gone[0], came[0]):
 		crate_moves[came[0]] = Vector2(gone[0])
 	anim_t = 0.0 if _straight(old.p, new.p) else 1.0
+	if old.p != new.p and anim_t == 0.0:
+		step_t = 0.0
+		step_dir = Vector2(new.p - old.p).normalized()
+		step_push = not crate_moves.is_empty()
 
 
 func _straight(a: Vector2i, b: Vector2i) -> bool:
@@ -721,6 +730,7 @@ func _straight(a: Vector2i, b: Vector2i) -> bool:
 func _snap() -> void:
 	anim_t = 1.0
 	bump_t = 1.0
+	step_t = 1.0
 	crate_moves.clear()
 	queue_redraw()
 
@@ -1028,15 +1038,90 @@ func _draw_crate(pos: Vector2, kind: String, done: bool, on_goal: bool) -> void:
 
 func _draw_robot(pos: Vector2) -> void:
 	var r := _cell_rect(pos)
+	var c := r.get_center()
 	if armed != "":
 		var glow := Color("ffd23f") if armed == "pull" else Color("ff5a36")
-		draw_circle(r.get_center(), cell * 0.5, Color(glow, 0.3 + 0.1 * sin(clock * 8.0)), true, -1.0, true)
+		draw_circle(c, cell * 0.5, Color(glow, 0.3 + 0.1 * sin(clock * 8.0)), true, -1.0, true)
 	var name := "robot-down"
 	match facing:
 		Vector2i.UP: name = "robot-up"
 		Vector2i.LEFT: name = "robot-left"
 		Vector2i.RIGHT: name = "robot-right"
-	_spr(name, r)
+
+	# Idle: a slow hover. Each step: a small hop with squash and stretch,
+	# a lean forward while pushing, and dust puffs left behind.
+	var hop := 0.0
+	var sx := 1.0 + 0.015 * sin(clock * 3.0)
+	var sy := 1.0 - 0.015 * sin(clock * 3.0)
+	var lean := 0.0
+	if step_t < 1.0:
+		var t := step_t
+		hop = sin(minf(t * 1.6, 1.0) * PI) * 0.07
+		# stretch while in the air, squash on landing, settle
+		var w := sin(t * PI * 2.0) * (1.0 - t)
+		sy += 0.10 * w
+		sx -= 0.08 * w
+		if step_push:
+			lean = sin(minf(t * 1.3, 1.0) * PI) * 0.14
+		_draw_dust(c, t)
+	if bump_t < 1.0:
+		lean += sin(bump_t * PI) * 0.08
+
+	# soft shadow that shrinks as Kip hops
+	var sh := cell * (0.30 - hop * 0.8)
+	draw_set_transform(c + Vector2(0, cell * 0.36), 0.0, Vector2(1.0, 0.32))
+	draw_circle(Vector2.ZERO, sh, Color(0, 0, 0, 0.28), true, -1.0, true)
+	draw_set_transform(Vector2.ZERO)
+
+	var dir := step_dir if step_t < 1.0 else bump_dir
+	var ang := 0.0
+	if dir.x != 0.0:
+		ang = lean * signf(dir.x) * 0.9
+	var off := dir * lean * cell * 0.35 + Vector2(0, -hop * cell)
+	# scale around the robot's feet so a squash stays on the floor
+	var feet := c + Vector2(0, cell * 0.4) + off
+	draw_set_transform(feet, ang, Vector2(sx, sy))
+	_spr(name, Rect2(Vector2(-cell / 2.0, -cell * 0.9), Vector2(cell, cell)))
+	_draw_eye(name, step_t >= 1.0 and bump_t >= 1.0)
+	draw_set_transform(Vector2.ZERO)
+
+
+## Kip's lens: a soft glow, and while standing still a blink every few
+## seconds (sometimes a double blink). Drawn in the robot's own transform.
+const EYE := {"robot-up": Vector2(64, 33), "robot-down": Vector2(64, 98),
+		"robot-left": Vector2(32, 62), "robot-right": Vector2(96, 62)}
+
+func _draw_eye(name: String, idle: bool) -> void:
+	var e: Vector2 = EYE[name] / 128.0 * cell - Vector2(cell / 2.0, cell * 0.9)
+	draw_circle(e, cell * 0.11, Color(0.3, 1.0, 0.9, 0.12 + 0.08 * sin(clock * 4.0)), true, -1.0, true)
+	if not idle:
+		return
+	var t := fmod(clock, 3.6)
+	var cyc := int(clock / 3.6)
+	var shut := 0.0
+	if t < 0.16:
+		shut = sin(t / 0.16 * PI)
+	elif cyc % 3 == 2 and t > 0.24 and t < 0.40:
+		shut = sin((t - 0.24) / 0.16 * PI)
+	if shut <= 0.0:
+		return
+	var rad := cell * 0.075
+	draw_circle(e, rad * shut, Color(0.12, 0.14, 0.2), true, -1.0, true)
+	if shut > 0.6:
+		var side := Vector2(rad, 0) if name == "robot-up" or name == "robot-down" else Vector2(0, rad)
+		draw_line(e - side, e + side, Color(0.3, 1.0, 0.9), cell * 0.025, true)
+
+
+func _draw_dust(c: Vector2, t: float) -> void:
+	var back := -step_dir
+	var side := Vector2(-step_dir.y, step_dir.x)
+	var base := c + Vector2(0, cell * 0.3) + back * cell * 0.25
+	var n := 4 if step_push else 3
+	for i in n:
+		var s := float(i) / float(n - 1) - 0.5
+		var p := base + side * s * cell * 0.4 + back * t * cell * 0.25 + Vector2(0, -t * cell * 0.12)
+		var rad := cell * (0.05 + 0.06 * t) * (1.2 if step_push else 1.0)
+		draw_circle(p, rad, Color(0.75, 0.78, 0.9, 0.45 * (1.0 - t)), true, -1.0, true)
 
 
 
