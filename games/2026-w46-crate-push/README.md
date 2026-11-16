@@ -19,7 +19,7 @@ Tap the arrow buttons under the board, or swipe on the board. Hold an arrow (or 
 | Key | Action |
 | --- | --- |
 | Z, U, Backspace | Undo |
-| R | Restart (asks first, and can be undone) |
+| R | Restart (asks first, clears the undo history) |
 | H | Hint |
 | Esc | Back |
 | Enter, Space | Default button on a popup |

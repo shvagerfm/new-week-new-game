@@ -22,13 +22,13 @@ func _initialize() -> void:
 			if main.finished != "won" or stars != 3:
 				bad += 1
 				print("FAIL ", main.zones[z].levels[i].id, " finished=", main.finished, " stars=", stars)
-	# Boosters: undo and restart round trip on a level with plates.
+	# Restart starts over cleanly: Undo can't bring back moves from before it.
 	main._start_level(2, 1)
 	main._try_move(Vector2i.RIGHT)
 	main._restart()
 	main._undo()
-	if main.state.moves != 1:
+	if main.state.moves != 0 or not main.history.is_empty():
 		bad += 1
-		print("FAIL undo after restart")
+		print("FAIL undo after restart brought back old moves")
 	print("play test: %d failures" % bad)
 	quit(1 if bad else 0)
