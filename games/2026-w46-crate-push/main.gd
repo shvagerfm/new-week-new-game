@@ -8,7 +8,10 @@ extends Node2D
 const SAVE_PATH := "user://crate_push.cfg"
 
 const TOP_BAR := 190.0
-const BOTTOM_BAR := 250.0
+const BOTTOM_BAR := 460.0
+const PAD_CELL := 104.0  # one arrow button of the on-screen d-pad
+const HOLD_DELAY := 0.3  # hold an arrow this long to start walking
+const HOLD_STEP := 0.14
 const MARGIN := 20.0
 const MAX_CELL := 110.0
 const SWIPE_MIN := 36.0
@@ -85,6 +88,8 @@ var origin := Vector2.ZERO
 
 # Touch
 var touch_index := -1
+var hold_dir := Vector2i.ZERO  # d-pad arrow being held
+var hold_t := 0.0
 var swipe_start := Vector2.ZERO
 var title_taps := 0
 
@@ -109,6 +114,7 @@ var toast_label: Label
 var booster_row: HBoxContainer
 var booster_buttons := {}
 var undo_button: Button
+var restart_button: Button
 var overlay: Control
 var overlay_title: Label
 var overlay_stars: Control
@@ -122,7 +128,8 @@ var card_icon: TextureRect
 var card_title: Label
 var card_text: Label
 var card_ok: Button
-var ring: Panel
+var rings: Array[Panel] = []
+var dpad: Control
 var tip_now := ""     # the card on screen, or ""
 var tip_queue: Array[String] = []
 var tip_moves := 0    # moves made while the current card is up
@@ -312,6 +319,7 @@ func _show_levels() -> void:
 
 
 func _set_screen(c: Control) -> void:
+	hold_dir = Vector2i.ZERO
 	for s in [menu_screen, map_screen, levels_screen, play_hud]:
 		s.visible = s == c
 	overlay.hide()
@@ -576,7 +584,7 @@ func _toast(text: String) -> void:
 
 func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventScreenTouch:
-		if event.pressed and touch_index == -1:
+		if event.pressed and touch_index == -1 and _on_board(event.position):
 			touch_index = event.index
 			swipe_start = event.position
 		elif not event.pressed and event.index == touch_index:
@@ -629,6 +637,12 @@ func _on_key(event: InputEventKey) -> void:
 		get_viewport().set_input_as_handled()
 
 
+## Swipes only count when they start above the bottom controls, so pressing
+## a d-pad arrow never also counts as a swipe.
+func _on_board(pos: Vector2) -> bool:
+	return screen != "play" or pos.y < get_viewport_rect().size.y - BOTTOM_BAR + 20.0
+
+
 func _back() -> void:
 	if overlay.visible and screen != "play":
 		_hide_overlay()
@@ -659,6 +673,11 @@ func _process(delta: float) -> void:
 		return
 	clock += delta
 	_update_ring()
+	if hold_dir != Vector2i.ZERO:
+		hold_t -= delta
+		if hold_t <= 0.0:
+			hold_t = HOLD_STEP
+			_try_move(hold_dir)
 	anim_t = minf(anim_t + delta / MOVE_TIME, 1.0)
 	bump_t = minf(bump_t + delta / BUMP_TIME, 1.0)
 	queue_redraw()
@@ -945,7 +964,8 @@ func _hide_card() -> void:
 	if card == null:
 		return
 	card.hide()
-	ring.hide()
+	for r in rings:
+		r.hide()
 	_update_hud()
 	_layout.call_deferred()
 
@@ -987,26 +1007,31 @@ func _toggle_tips() -> void:
 	_show_menu()
 
 
-## What the ring around a HUD control points at for the current card.
-func _ring_target() -> Control:
+## HUD controls the current card points at with a ring.
+func _ring_targets() -> Array:
 	match tip_now:
+		"move":
+			return [dpad]
 		"undo":
-			return undo_button.get_parent()
+			return [undo_button, restart_button]
 		"limit":
-			return info_label
+			return [info_label]
 	if tip_now.begins_with("tool-"):
-		return booster_buttons.get(tip_now.substr(5))
-	return null
+		return [booster_buttons.get(tip_now.substr(5))]
+	return []
 
 
 func _update_ring() -> void:
-	var target := _ring_target()
-	ring.visible = target != null and target.is_visible_in_tree()
-	if ring.visible:
-		var r := target.get_global_rect().grow(8)
-		ring.global_position = r.position
-		ring.size = r.size
-		ring.modulate.a = 0.55 + 0.45 * sin(clock * 5.0)
+	var targets := _ring_targets()
+	for i in rings.size():
+		var ring := rings[i]
+		var target: Control = targets[i] if i < targets.size() else null
+		ring.visible = target != null and target.is_visible_in_tree()
+		if ring.visible:
+			var r := target.get_global_rect().grow(8)
+			ring.global_position = r.position
+			ring.size = r.size
+			ring.modulate.a = 0.55 + 0.45 * sin(clock * 5.0)
 
 
 ## Pulsing outlines on the cells the card talks about, and in the first step a
@@ -1084,16 +1109,18 @@ func _build_card() -> void:
 	buttons.add_child(card_ok)
 	card.hide()
 
-	ring = Panel.new()
-	ring.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	var rs := StyleBoxFlat.new()
 	rs.draw_center = false
 	rs.border_color = C_ORANGE
 	rs.set_border_width_all(5)
 	rs.set_corner_radius_all(22)
-	ring.add_theme_stylebox_override("panel", rs)
-	play_hud.add_child(ring)
-	ring.hide()
+	for i in 2:
+		var ring := Panel.new()
+		ring.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		ring.add_theme_stylebox_override("panel", rs)
+		play_hud.add_child(ring)
+		ring.hide()
+		rings.append(ring)
 
 
 # --- HUD ------------------------------------------------------------------------
@@ -1368,20 +1395,79 @@ func _build_play() -> void:
 		btn.add_theme_font_size_override("font_size", 26)
 		booster_row.add_child(btn)
 		booster_buttons[b] = btn
+	# Undo | d-pad | Restart
 	var row := HBoxContainer.new()
 	row.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	row.add_theme_constant_override("separation", 20)
+	row.add_theme_constant_override("separation", 18)
 	bottom.add_child(row)
-	undo_button = _button("Undo", _undo)
-	undo_button.icon = Sprites.icon("undo")
-	undo_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	undo_button.custom_minimum_size = Vector2(0, 100)
+	undo_button = _side_button("Undo", "undo", _undo)
 	row.add_child(undo_button)
-	var restart := _button("Restart", _restart)
-	restart.icon = Sprites.icon("restart")
-	restart.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	restart.custom_minimum_size = Vector2(0, 100)
-	row.add_child(restart)
+	dpad = _build_dpad()
+	row.add_child(dpad)
+	restart_button = _side_button("Restart", "restart", _restart)
+	row.add_child(restart_button)
+
+
+## Undo / Restart next to the d-pad: icon above the word.
+func _side_button(text: String, icon: String, action: Callable) -> Button:
+	var b := _button(text, action)
+	b.icon = Sprites.icon(icon)
+	b.icon_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	b.vertical_icon_alignment = VERTICAL_ALIGNMENT_TOP
+	b.add_theme_constant_override("icon_max_width", 56)
+	b.add_theme_font_size_override("font_size", 28)
+	b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	b.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	b.custom_minimum_size = Vector2(0, 150)
+	return b
+
+
+## On-screen arrows. Tap to step, hold to keep walking.
+func _build_dpad() -> Control:
+	var pad := Control.new()
+	pad.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	pad.custom_minimum_size = Vector2.ONE * PAD_CELL * 3.0
+	var hub := Panel.new()
+	hub.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var hs := StyleBoxFlat.new()
+	hs.bg_color = Color("10131f")
+	hs.border_color = Color("3b4170")
+	hs.set_border_width_all(3)
+	hs.set_corner_radius_all(int(PAD_CELL * 0.3))
+	hub.add_theme_stylebox_override("panel", hs)
+	pad.add_child(hub)
+	hub.position = Vector2.ONE * PAD_CELL * 0.9
+	hub.size = Vector2.ONE * PAD_CELL * 1.2
+	for d: Vector2i in [Vector2i.UP, Vector2i.DOWN, Vector2i.LEFT, Vector2i.RIGHT]:
+		var b := Button.new()
+		b.focus_mode = Control.FOCUS_NONE
+		b.position = (Vector2(d) + Vector2.ONE) * PAD_CELL
+		b.size = Vector2.ONE * PAD_CELL
+		b.button_down.connect(_pad_down.bind(d))
+		b.button_up.connect(_pad_up.bind(d))
+		b.draw.connect(func() -> void:
+			var c := b.size / 2.0
+			if b.is_pressed():
+				c.y += 4.0
+			var v := Vector2(d)
+			var side := Vector2(-v.y, v.x) * PAD_CELL * 0.2
+			var tip := c + v * PAD_CELL * 0.17
+			var tri := PackedVector2Array([tip, tip - v * PAD_CELL * 0.3 + side, tip - v * PAD_CELL * 0.3 - side])
+			b.draw_colored_polygon(tri, C_ORANGE if b.is_pressed() else C_TEXT)
+			b.draw_polyline(tri + PackedVector2Array([tri[0]]), C_INK, 4.0, true))
+		pad.add_child(b)
+	return pad
+
+
+func _pad_down(d: Vector2i) -> void:
+	hold_dir = d
+	hold_t = HOLD_DELAY
+	_try_move(d)
+
+
+func _pad_up(d: Vector2i) -> void:
+	if hold_dir == d:
+		hold_dir = Vector2i.ZERO
 
 
 func _build_overlay() -> void:
