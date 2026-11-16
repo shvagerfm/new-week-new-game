@@ -1529,6 +1529,7 @@ func _build_play() -> void:
 		btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		btn.custom_minimum_size = Vector2(0, 74)
 		btn.add_theme_font_size_override("font_size", 26)
+		_flat_style(btn)
 		booster_row.add_child(btn)
 		booster_buttons[b] = btn
 	dpad = _build_dpad()
@@ -1543,8 +1544,27 @@ func _icon_button(icon: String, action: Callable) -> Button:
 	b.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	b.icon = Sprites.icon(icon)
 	b.icon_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	b.add_theme_constant_override("icon_max_width", 56)
+	b.add_theme_constant_override("icon_max_width", 52)
+	_flat_style(b)
 	return b
+
+
+## Plain flat look for the in-game controls: one fill, a thin border, no
+## highlights or shadows. Pressed turns the border orange.
+func _flat_style(b: Button) -> void:
+	var make := func(bg: Color, border: Color) -> StyleBoxFlat:
+		var st := StyleBoxFlat.new()
+		st.bg_color = bg
+		st.border_color = border
+		st.set_border_width_all(2)
+		st.set_corner_radius_all(20)
+		st.anti_aliasing = true
+		return st
+	b.add_theme_stylebox_override("normal", make.call(Color("2a2f4a"), Color("454c78")))
+	b.add_theme_stylebox_override("hover", make.call(Color("323858"), Color("59628f")))
+	b.add_theme_stylebox_override("pressed", make.call(Color("232740"), C_ORANGE))
+	b.add_theme_stylebox_override("disabled", make.call(Color("2a2f4a", 0.45), Color("454c78", 0.45)))
+	b.add_theme_color_override("icon_disabled_color", Color(1, 1, 1, 0.35))
 
 
 ## On-screen arrows. Tap to step, hold to keep walking.
@@ -1552,34 +1572,21 @@ func _build_dpad() -> Control:
 	var pad := Control.new()
 	pad.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	pad.custom_minimum_size = Vector2.ONE * PAD_CELL * 3.0
-	var hub := Panel.new()
-	hub.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	var hs := StyleBoxFlat.new()
-	hs.bg_color = Color("10131f")
-	hs.border_color = Color("3b4170")
-	hs.set_border_width_all(3)
-	hs.set_corner_radius_all(int(PAD_CELL * 0.3))
-	hub.add_theme_stylebox_override("panel", hs)
-	pad.add_child(hub)
-	hub.position = Vector2.ONE * PAD_CELL * 0.9
-	hub.size = Vector2.ONE * PAD_CELL * 1.2
 	for d: Vector2i in [Vector2i.UP, Vector2i.DOWN, Vector2i.LEFT, Vector2i.RIGHT]:
 		var b := Button.new()
 		b.focus_mode = Control.FOCUS_NONE
-		b.position = (Vector2(d) + Vector2.ONE) * PAD_CELL
-		b.size = Vector2.ONE * PAD_CELL
+		b.position = (Vector2(d) + Vector2.ONE) * PAD_CELL + Vector2.ONE * 4.0
+		b.size = Vector2.ONE * (PAD_CELL - 8.0)
+		_flat_style(b)
 		b.button_down.connect(_pad_down.bind(d))
 		b.button_up.connect(_pad_up.bind(d))
 		b.draw.connect(func() -> void:
 			var c := b.size / 2.0
-			if b.is_pressed():
-				c.y += 4.0
 			var v := Vector2(d)
 			var side := Vector2(-v.y, v.x) * PAD_CELL * 0.2
 			var tip := c + v * PAD_CELL * 0.17
 			var tri := PackedVector2Array([tip, tip - v * PAD_CELL * 0.3 + side, tip - v * PAD_CELL * 0.3 - side])
-			b.draw_colored_polygon(tri, C_ORANGE if b.is_pressed() else C_TEXT)
-			b.draw_polyline(tri + PackedVector2Array([tri[0]]), C_INK, 4.0, true))
+			b.draw_colored_polygon(tri, C_ORANGE if b.is_pressed() else C_TEXT))
 		pad.add_child(b)
 	return pad
 
