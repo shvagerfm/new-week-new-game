@@ -1267,9 +1267,9 @@ func _build_menu() -> void:
 	menu_screen.add_child(col)
 	col.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	_cap_width(col, 60, 600)
-	col.offset_top = 60
-	col.offset_bottom = -60
-	var logo := _ui_rect("logo", Vector2(520, 450))
+	col.offset_top = 100
+	col.offset_bottom = -40
+	var logo := _ui_rect("logo", Vector2(460, 380))
 	logo.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	logo.mouse_filter = Control.MOUSE_FILTER_STOP
 	logo.gui_input.connect(func(e: InputEvent) -> void:
@@ -1284,7 +1284,7 @@ func _build_menu() -> void:
 	for sprite in ["robot-right", "crate", "target"]:
 		var r := TextureRect.new()
 		r.texture = Sprites.icon(sprite)
-		r.custom_minimum_size = Vector2(170, 170)
+		r.custom_minimum_size = Vector2(140, 140)
 		r.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 		r.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 		r.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -1311,11 +1311,17 @@ func _build_menu() -> void:
 	menu_stars.autowrap_mode = TextServer.AUTOWRAP_OFF
 	count.add_child(menu_stars)
 	col.add_child(count)
+	# Tips toggle in the top-right corner, so it is never pushed off a short
+	# screen by the Continue button.
 	tips_button = _button("", _toggle_tips)
-	tips_button.custom_minimum_size = Vector2(0, 84)
-	tips_button.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
-	tips_button.add_theme_font_size_override("font_size", 28)
-	col.add_child(tips_button)
+	tips_button.custom_minimum_size = Vector2(200, 80)
+	tips_button.add_theme_font_size_override("font_size", 26)
+	menu_screen.add_child(tips_button)
+	tips_button.set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT)
+	tips_button.offset_left = -224
+	tips_button.offset_right = -24
+	tips_button.offset_top = 24
+	tips_button.offset_bottom = 104
 
 
 func _build_map() -> void:
