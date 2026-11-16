@@ -52,6 +52,8 @@ const TARGET_GLOW := {"a": Color("ff6b6b"), "b": Color("5aa9ff"), "c": Color("6f
 var zones: Array[Dictionary] = []
 var best := {}        # level id -> stars (1..3)
 var intro_seen := {}  # zone id -> true
+var tips_seen := {}   # tip card id -> true (see tutorials.gd)
+var tips_off := false
 
 var screen := ""
 var zone_i := 0
@@ -112,7 +114,18 @@ var overlay_title: Label
 var overlay_stars: Control
 var overlay_text: Label
 var overlay_buttons: HBoxContainer
+var tips_button: Button
 
+# Tip cards
+var card: PanelContainer
+var card_icon: TextureRect
+var card_title: Label
+var card_text: Label
+var card_ok: Button
+var ring: Panel
+var tip_now := ""     # the card on screen, or ""
+var tip_queue: Array[String] = []
+var tip_moves := 0    # moves made while the current card is up
 
 
 func _ready() -> void:
@@ -135,6 +148,7 @@ func _show_menu() -> void:
 			total += 3
 	menu_stars.text = "%d / %d" % [got, total]
 	continue_button.visible = not best.is_empty() and _next_level() != Vector2i(-1, -1)
+	tips_button.text = "Tips: Off" if tips_off else "Tips: On"
 	_set_screen(menu_screen)
 
 
@@ -334,12 +348,16 @@ func _load_progress() -> void:
 		return
 	best = cfg.get_value("progress", "best", {})
 	intro_seen = cfg.get_value("progress", "intro_seen", {})
+	tips_seen = cfg.get_value("progress", "tips_seen", {})
+	tips_off = cfg.get_value("progress", "tips_off", false)
 
 
 func _save_progress() -> void:
 	var cfg := ConfigFile.new()
 	cfg.set_value("progress", "best", best)
 	cfg.set_value("progress", "intro_seen", intro_seen)
+	cfg.set_value("progress", "tips_seen", tips_seen)
+	cfg.set_value("progress", "tips_off", tips_off)
 	cfg.save(SAVE_PATH)
 
 
@@ -365,6 +383,7 @@ func _start_level(z: int, i: int) -> void:
 	screen = "play"
 	_set_screen(play_hud)
 	_restart_attempt()
+	_queue_tips()
 	_layout()
 
 
@@ -439,8 +458,10 @@ func _try_move(dir: Vector2i) -> void:
 		_use_booster("pull")
 	history.append(state)
 	_start_animation(state, next)
+	var before := state
 	state = next
 	hint_dir = Vector2i.ZERO
+	_tip_after_move(before, next)
 	var o := lv.outcome(state)
 	if o == "won":
 		_on_won()
@@ -452,6 +473,8 @@ func _try_move(dir: Vector2i) -> void:
 
 func _on_won() -> void:
 	finished = "won"
+	tip_queue.clear()
+	_hide_card()
 	var lid: String = zones[zone_i].levels[level_i].id
 	var stars := _stars_for(state.moves, lv.par, booster_used)
 	var first_clear := not best.has(lid)
@@ -463,6 +486,10 @@ func _on_won() -> void:
 		text += "   ·   best possible %d" % lv.par
 	if booster_used and stars < 3:
 		text += "\nTools used: 2 stars at most."
+	if not tips_off and not tips_seen.has("stars"):
+		tips_seen["stars"] = true
+		_save_progress()
+		text += "\n\n3 stars: solve it in the best possible moves, with no tools. Replay any room to do better."
 	var buttons := [["Replay", _restart_attempt]]
 	if not last_in_zone:
 		buttons.append(["Next", _start_level.bind(zone_i, level_i + 1)])
@@ -590,7 +617,9 @@ func _on_key(event: InputEventKey) -> void:
 		KEY_ESCAPE:
 			_back()
 		KEY_ENTER, KEY_KP_ENTER, KEY_SPACE:
-			if overlay.visible and not event.echo:
+			if not overlay.visible and screen == "play" and tip_now != "" and card_ok.visible and not event.echo:
+				_next_tip()
+			elif overlay.visible and not event.echo:
 				var bs := overlay_buttons.get_children()
 				if not bs.is_empty():
 					(bs[bs.size() - 1] as Button).pressed.emit()
@@ -629,6 +658,7 @@ func _process(delta: float) -> void:
 	if screen != "play":
 		return
 	clock += delta
+	_update_ring()
 	anim_t = minf(anim_t + delta / MOVE_TIME, 1.0)
 	bump_t = minf(bump_t + delta / BUMP_TIME, 1.0)
 	queue_redraw()
@@ -664,7 +694,10 @@ func _layout() -> void:
 	if lv == null:
 		return
 	var view := get_viewport_rect().size
-	var area := Rect2(Vector2(MARGIN, TOP_BAR), view - Vector2(MARGIN * 2.0, TOP_BAR + BOTTOM_BAR))
+	var top := TOP_BAR
+	if card != null and card.visible:
+		top = maxf(top, card.position.y + card.size.y + 12.0)
+	var area := Rect2(Vector2(MARGIN, top), view - Vector2(MARGIN * 2.0, top + BOTTOM_BAR))
 	cell = floorf(minf(minf(area.size.x / lv.size.x, area.size.y / lv.size.y), MAX_CELL))
 	origin = (area.position + (area.size - Vector2(lv.size) * cell) / 2.0).floor()
 	queue_redraw()
@@ -696,6 +729,7 @@ func _draw() -> void:
 	if bump_t < 1.0:
 		ppos += bump_dir * 0.12 * sin(bump_t * PI)
 	_draw_robot(ppos)
+	_draw_tip_marks()
 	if hint_dir != Vector2i.ZERO:
 		var c := _cell_rect(Vector2(state.p)).get_center()
 		var d := Vector2(hint_dir)
@@ -859,6 +893,209 @@ func _draw_robot(pos: Vector2) -> void:
 
 
 
+# --- Tip cards ------------------------------------------------------------------
+# A card under the title explains the first room step by step, then each new
+# tile, crate or tool the first time a room has it. See tutorials.gd.
+
+func _queue_tips() -> void:
+	tip_queue.clear()
+	_hide_card()
+	if tips_off:
+		return
+	if not tips_seen.has("move"):
+		tip_queue.append("move")
+	else:
+		for t in Tutorials.topics_for(lv, uses.keys()):
+			if not tips_seen.has(t):
+				tip_queue.append(t)
+	_next_tip()
+
+
+func _next_tip() -> void:
+	if tip_queue.is_empty():
+		_hide_card()
+		return
+	_show_tip(tip_queue.pop_front())
+
+
+func _show_tip(id: String) -> void:
+	var t: Dictionary = Tutorials.TOPICS[id]
+	tip_now = id
+	tip_moves = 0
+	# Marked as seen as soon as it shows, so it never comes back.
+	tips_seen[id] = true
+	if id == "move":
+		for w in Tutorials.WALKTHROUGH:
+			tips_seen[w] = true
+	_save_progress()
+	card_icon.texture = Sprites.icon(t.icon)
+	card_title.text = t.title
+	card_title.add_theme_color_override("font_color", zones[zone_i].color)
+	card_text.text = t.text
+	# Walkthrough steps move on when the player does the step.
+	card_ok.visible = not Tutorials.WALKTHROUGH.has(id)
+	card.offset_bottom = card.offset_top  # shrink to fit the new text
+	card.show()
+	_update_hud()
+	_layout.call_deferred()
+
+
+func _hide_card() -> void:
+	tip_now = ""
+	if card == null:
+		return
+	card.hide()
+	ring.hide()
+	_update_hud()
+	_layout.call_deferred()
+
+
+func _tip_after_move(before: Dictionary, after: Dictionary) -> void:
+	if tip_now == "":
+		return
+	var pushed: bool = before.boxes != after.boxes
+	match tip_now:
+		"move":
+			_show_tip("goal" if pushed else "push")
+		"push":
+			if pushed:
+				_show_tip("goal")
+		"goal":
+			pass
+		_:
+			# The card gets out of the way once the player is busy. Anything
+			# still queued shows up in a later room.
+			tip_moves += 1
+			if tip_moves >= 6:
+				tip_queue.clear()
+				_hide_card()
+
+
+func _skip_tips() -> void:
+	tips_off = true
+	_save_progress()
+	tip_queue.clear()
+	_hide_card()
+	_toast("Tips off. Turn them on again from the main menu.")
+
+
+func _toggle_tips() -> void:
+	tips_off = not tips_off
+	if not tips_off:
+		tips_seen.clear()  # turning tips back on shows every card again
+	_save_progress()
+	_show_menu()
+
+
+## What the ring around a HUD control points at for the current card.
+func _ring_target() -> Control:
+	match tip_now:
+		"undo":
+			return undo_button.get_parent()
+		"limit":
+			return info_label
+	if tip_now.begins_with("tool-"):
+		return booster_buttons.get(tip_now.substr(5))
+	return null
+
+
+func _update_ring() -> void:
+	var target := _ring_target()
+	ring.visible = target != null and target.is_visible_in_tree()
+	if ring.visible:
+		var r := target.get_global_rect().grow(8)
+		ring.global_position = r.position
+		ring.size = r.size
+		ring.modulate.a = 0.55 + 0.45 * sin(clock * 5.0)
+
+
+## Pulsing outlines on the cells the card talks about, and in the first step a
+## sliding arrow that shows which way to swipe.
+func _draw_tip_marks() -> void:
+	if tip_now == "":
+		return
+	var pulse := 0.5 + 0.5 * sin(clock * 5.0)
+	var sb := StyleBoxFlat.new()
+	sb.draw_center = false
+	sb.border_color = Color(C_ORANGE, 0.5 + 0.5 * pulse)
+	sb.set_border_width_all(int(maxf(3.0, cell * 0.05)))
+	sb.set_corner_radius_all(int(cell * 0.18))
+	for p: Vector2i in Tutorials.cells_for(tip_now, lv, state):
+		draw_style_box(sb, _cell_rect(Vector2(p)).grow(-cell * 0.03))
+	if tip_now == "move" and anim_t >= 1.0 and not state.boxes.is_empty():
+		var to: Vector2i = state.boxes.keys()[0] - state.p
+		var d := Vector2(signf(to.x), 0) if absi(to.x) >= absi(to.y) else Vector2(0, signf(to.y))
+		var c := _cell_rect(Vector2(state.p)).get_center()
+		var t := fmod(clock * 1.1, 1.0)
+		var tip := c + d * cell * (0.7 + 0.9 * t)
+		var side := Vector2(-d.y, d.x) * cell * 0.2
+		var back := tip - d * cell * 0.25
+		var col := Color(C_TEXT, 1.0 - t)
+		draw_polyline(PackedVector2Array([back + side, tip, back - side]), col, maxf(3.0, cell * 0.07), true)
+
+
+func _build_card() -> void:
+	card = PanelContainer.new()
+	card.add_theme_stylebox_override("panel",
+			UiArt.box("panel-frame", Vector4(44, 44, 44, 44), Vector4(30, 22, 30, 20)))
+	play_hud.add_child(card)
+	card.set_anchors_and_offsets_preset(Control.PRESET_TOP_WIDE)
+	_cap_width(card, 16, 688)
+	card.offset_top = 132
+	card.offset_bottom = 132
+	card.resized.connect(_layout)
+	var col := VBoxContainer.new()
+	col.add_theme_constant_override("separation", 4)
+	card.add_child(col)
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 18)
+	col.add_child(row)
+	card_icon = TextureRect.new()
+	card_icon.custom_minimum_size = Vector2(92, 92)
+	card_icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	card_icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	card_icon.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	row.add_child(card_icon)
+	var texts := VBoxContainer.new()
+	texts.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	texts.add_theme_constant_override("separation", 2)
+	row.add_child(texts)
+	card_title = _label("", 32, C_GOAL)
+	card_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
+	texts.add_child(card_title)
+	card_text = _label("", 25, C_TEXT)
+	card_text.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
+	texts.add_child(card_text)
+	var buttons := HBoxContainer.new()
+	buttons.alignment = BoxContainer.ALIGNMENT_END
+	buttons.add_theme_constant_override("separation", 16)
+	col.add_child(buttons)
+	var skip := _button("Skip tips", _skip_tips)
+	skip.custom_minimum_size = Vector2(0, 72)
+	skip.add_theme_font_size_override("font_size", 24)
+	skip.add_theme_color_override("font_color", C_DIM)
+	var empty := StyleBoxEmpty.new()
+	for st in ["normal", "hover", "pressed"]:
+		skip.add_theme_stylebox_override(st, empty)
+	buttons.add_child(skip)
+	card_ok = _primary_button("Got it", _next_tip)
+	card_ok.custom_minimum_size = Vector2(190, 76)
+	card_ok.add_theme_font_size_override("font_size", 30)
+	buttons.add_child(card_ok)
+	card.hide()
+
+	ring = Panel.new()
+	ring.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var rs := StyleBoxFlat.new()
+	rs.draw_center = false
+	rs.border_color = C_ORANGE
+	rs.set_border_width_all(5)
+	rs.set_corner_radius_all(22)
+	ring.add_theme_stylebox_override("panel", rs)
+	play_hud.add_child(ring)
+	ring.hide()
+
+
 # --- HUD ------------------------------------------------------------------------
 
 func _update_hud() -> void:
@@ -880,7 +1117,7 @@ func _update_hud() -> void:
 		info += "    Keys %d" % state.keys
 	info_label.text = info
 	tip_label.text = lv.tip
-	tip_label.visible = lv.tip != "" and state.moves < 6
+	tip_label.visible = lv.tip != "" and state.moves < 6 and tip_now == ""
 	undo_button.disabled = history.is_empty()
 	for b in booster_buttons:
 		var btn: Button = booster_buttons[b]
@@ -904,6 +1141,7 @@ func _build_ui() -> void:
 	_build_map()
 	_build_levels()
 	_build_play()
+	_build_card()
 	_build_overlay()
 
 
@@ -960,6 +1198,11 @@ func _build_menu() -> void:
 	menu_stars.autowrap_mode = TextServer.AUTOWRAP_OFF
 	count.add_child(menu_stars)
 	col.add_child(count)
+	tips_button = _button("", _toggle_tips)
+	tips_button.custom_minimum_size = Vector2(0, 84)
+	tips_button.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	tips_button.add_theme_font_size_override("font_size", 28)
+	col.add_child(tips_button)
 
 
 func _build_map() -> void:
