@@ -14,7 +14,7 @@ Kip, a little cargo robot, restarts an abandoned space station by pushing batter
 
 ## Controls
 
-Swipe to move. Keep dragging to keep walking. On a keyboard, use the arrows or WASD.
+Tap the arrow buttons under the board, or swipe on the board. Hold an arrow (or keep dragging) to keep walking. On a keyboard, use the arrows or WASD. Swipes that start on the bottom controls are ignored, so a press on an arrow never also counts as a swipe.
 
 | Key | Action |
 | --- | --- |
@@ -30,7 +30,7 @@ Tap the CRATE PUSH logo on the main menu seven times to unlock every zone, for t
 
 A tip card under the room title teaches the game as it goes. Every card shows once, and the save file remembers which ones were seen.
 
-- **First room walkthrough.** Three steps: move Kip, push the crate, charge it. Each step moves on when the player does it, and the board points at Kip, the crate and the charger.
+- **First room walkthrough.** Three steps: move Kip, push the crate, charge it. Each step moves on when the player does it, and the board points at Kip, the crate and the charger (and the arrow buttons in the first step).
 - **New things.** The first time a room has a new tile, crate or tool (ice, arrows, fire, plates, keys and doors, colored crates, cracked floor, heavy crates, teleporters, black holes, move limits, clocks, and each tool), a card explains it and outlines it on the board or around its button. Undo and Restart get a card in the second room.
 - **Stars** are explained on the first win screen.
 - A card closes with **Got it** (or Enter), or by itself after 6 moves. **Skip tips** turns all cards off; the **Tips** button on the main menu turns them back on and shows every card again.

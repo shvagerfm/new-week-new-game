@@ -12,7 +12,7 @@ const WALKTHROUGH := ["move", "push", "goal"]
 const TOPICS := {
 	"move": {
 		"title": "Move Kip",
-		"text": "Swipe anywhere to walk. Keep your finger down to keep walking. Keyboard: arrows or WASD.",
+		"text": "Tap the arrows at the bottom, or swipe on the board. Hold to keep walking. Keyboard: arrows or WASD.",
 		"icon": "robot-right",
 	},
 	"push": {
