@@ -127,6 +127,7 @@ var overlay_title: Label
 var overlay_stars: Control
 var overlay_text: Label
 var overlay_buttons: HBoxContainer
+var overlay_items: GridContainer
 var tips_button: Button
 
 # Tip cards
@@ -275,6 +276,7 @@ func _open_zone(i: int) -> void:
 		_save_progress()
 		_show_levels()
 		_show_overlay(z.name, z.story, -1, [["Let's go", _hide_overlay]])
+		_show_overlay_items(_zone_new_items(i))
 		return
 	_show_levels()
 
@@ -872,6 +874,11 @@ func _draw_walls() -> void:
 			draw_line(Vector2(top.end.x, top.position.y), Vector2(top.end.x, r.end.y), C_WALL_EDGE, edge)
 
 
+## Floor or an inner wall: the part of the map the rim goes around.
+func _in_room(q: Vector2i) -> bool:
+	return lv.inside.has(q) or (lv.walls.has(q) and not outer.has(q))
+
+
 ## The room's border: a thin strip along every side where an outer wall
 ## meets the floor, plus small squares on the room's outside corners.
 func _draw_rim() -> void:
@@ -880,7 +887,7 @@ func _draw_rim() -> void:
 	for p: Vector2i in outer:
 		var r := _cell_rect(Vector2(p))
 		for d: Vector2i in [Vector2i.UP, Vector2i.DOWN, Vector2i.LEFT, Vector2i.RIGHT]:
-			if not lv.inside.has(p + d):
+			if not _in_room(p + d):
 				continue
 			var strip: Rect2
 			var face: PackedVector2Array  # the side that faces the floor
@@ -904,7 +911,7 @@ func _draw_rim() -> void:
 		for dx in [-1, 1]:
 			for dy in [-1, 1]:
 				var d := Vector2i(dx, dy)
-				if lv.inside.has(p + d) and not lv.inside.has(p + Vector2i(dx, 0)) and not lv.inside.has(p + Vector2i(0, dy)):
+				if _in_room(p + d) and not _in_room(p + Vector2i(dx, 0)) and not _in_room(p + Vector2i(0, dy)):
 					var corner := Vector2(r.end.x - t if dx > 0 else r.position.x, r.end.y - t if dy > 0 else r.position.y)
 					draw_rect(Rect2(corner, Vector2(t, t)).grow(0.5), C_WALL_TOP)
 
@@ -1521,14 +1528,16 @@ func _build_play() -> void:
 	bottom.alignment = BoxContainer.ALIGNMENT_END
 	booster_row = HBoxContainer.new()
 	booster_row.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	booster_row.add_theme_constant_override("separation", 12)
+	booster_row.add_theme_constant_override("separation", 10)
+	booster_row.alignment = BoxContainer.ALIGNMENT_CENTER
 	bottom.add_child(booster_row)
 	for b in BOOSTERS:
 		var btn := _button(BOOSTERS[b].label, _on_booster.bind(b))
 		btn.icon = Sprites.icon(BOOSTERS[b].icon)
-		btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		btn.custom_minimum_size = Vector2(0, 74)
-		btn.add_theme_font_size_override("font_size", 26)
+		# Compact, fixed-size tool buttons, centered in their row
+		btn.custom_minimum_size = Vector2(156, 64)
+		btn.add_theme_font_size_override("font_size", 24)
+		btn.add_theme_constant_override("icon_max_width", 34)
 		_flat_style(btn)
 		booster_row.add_child(btn)
 		booster_buttons[b] = btn
@@ -1558,6 +1567,7 @@ func _flat_style(b: Button) -> void:
 		st.border_color = border
 		st.set_border_width_all(2)
 		st.set_corner_radius_all(20)
+		st.set_content_margin_all(10)
 		st.anti_aliasing = true
 		return st
 	b.add_theme_stylebox_override("normal", make.call(Color("2a2f4a"), Color("454c78")))
@@ -1621,6 +1631,13 @@ func _build_overlay() -> void:
 	box.add_child(overlay_stars)
 	overlay_text = _label("", 30, C_TEXT)
 	box.add_child(overlay_text)
+	overlay_items = GridContainer.new()
+	overlay_items.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	overlay_items.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	overlay_items.add_theme_constant_override("h_separation", 22)
+	overlay_items.add_theme_constant_override("v_separation", 16)
+	box.add_child(overlay_items)
+	overlay_items.hide()
 	overlay_buttons = HBoxContainer.new()
 	overlay_buttons.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	overlay_buttons.add_theme_constant_override("separation", 20)
@@ -1630,6 +1647,7 @@ func _build_overlay() -> void:
 
 ## buttons: [[label, callable], ...]; the last one is the default (Enter).
 func _show_overlay(title: String, text: String, stars: int, buttons: Array) -> void:
+	overlay_items.hide()
 	overlay_title.text = title
 	overlay_text.text = text
 	overlay_stars.visible = stars >= 0
@@ -1644,6 +1662,55 @@ func _show_overlay(title: String, text: String, stars: int, buttons: Array) -> v
 		btn.custom_minimum_size = Vector2(0, 104)
 		overlay_buttons.add_child(btn)
 	overlay.show()
+
+
+## What a zone brings that earlier zones didn't: [[sprite, name], ...].
+## The first zone shows the basics instead.
+func _zone_new_items(zi: int) -> Array:
+	if zi == 0:
+		return [["robot-right", "Kip"], ["crate", "Crate"], ["target", "Charger"]]
+	var seen := {}
+	var order: Array[String] = []
+	for z in zones.size():
+		if z > zi:
+			break
+		for l in zones[z].levels:
+			for t in Tutorials.topics_for(l.rules, _boosters_for(z)):
+				if z < zi:
+					seen[t] = true
+				elif not seen.has(t) and not order.has(t) and t != "undo":
+					order.append(t)
+	# New tiles first, then the new tool.
+	var tiles := order.filter(func(t: String) -> bool: return not t.begins_with("tool-"))
+	var tools := order.filter(func(t: String) -> bool: return t.begins_with("tool-"))
+	var out := []
+	for t in tiles + tools:
+		var info: Dictionary = Tutorials.TOPICS[t]
+		out.append([info.icon, info.title.trim_prefix("New tool: ")])
+	return out
+
+
+## Icons with captions under the popup text, e.g. a new zone's new tiles.
+func _show_overlay_items(items: Array) -> void:
+	for c in overlay_items.get_children():
+		c.queue_free()
+	overlay_items.columns = clampi(items.size(), 1, 4)
+	for it in items:
+		var cell := VBoxContainer.new()
+		cell.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		cell.add_theme_constant_override("separation", 4)
+		cell.custom_minimum_size = Vector2(130, 0)
+		var pic := TextureRect.new()
+		pic.texture = Sprites.icon(it[0])
+		pic.custom_minimum_size = Vector2(100, 100)
+		pic.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		pic.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		pic.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+		pic.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		cell.add_child(pic)
+		cell.add_child(_label(it[1], 22, C_GOAL))
+		overlay_items.add_child(cell)
+	overlay_items.visible = not items.is_empty()
 
 
 func _hide_overlay() -> void:
