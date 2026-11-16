@@ -14,12 +14,12 @@ Kip, a little cargo robot, restarts an abandoned space station by pushing batter
 
 ## Controls
 
-Tap the arrow buttons under the board, or swipe on the board. Hold an arrow (or keep dragging) to keep walking. On a keyboard, use the arrows or WASD. Swipes that start on the bottom controls are ignored, so a press on an arrow never also counts as a swipe.
+Tap the arrow buttons under the board, or swipe on the board. Hold an arrow (or keep dragging) to keep walking. On a keyboard, use the arrows or WASD. Swipes that start on the bottom controls are ignored, so a press on an arrow never also counts as a swipe. Undo and Restart sit in the top bar, away from the arrows, and Restart asks before it clears the room.
 
 | Key | Action |
 | --- | --- |
 | Z, U, Backspace | Undo |
-| R | Restart (can be undone) |
+| R | Restart (asks first, and can be undone) |
 | H | Hint |
 | Esc | Back |
 | Enter, Space | Default button on a popup |
@@ -33,7 +33,7 @@ A tip card under the room title teaches the game as it goes. Every card shows on
 - **First room walkthrough.** Three steps: move Kip, push the crate, charge it. Each step moves on when the player does it, and the board points at Kip, the crate and the charger (and the arrow buttons in the first step).
 - **New things.** The first time a room has a new tile, crate or tool (ice, arrows, fire, plates, keys and doors, colored crates, cracked floor, heavy crates, teleporters, black holes, move limits, clocks, and each tool), a card explains it and outlines it on the board or around its button. Undo and Restart get a card in the second room.
 - **Stars** are explained on the first win screen.
-- A card closes with **Got it** (or Enter), or by itself after 6 moves. **Skip tips** turns all cards off; the **Tips** button on the main menu turns them back on and shows every card again.
+- A card closes with **Got it** (or Enter), or by itself after 6 moves. **Skip tips** turns all cards off; the **Tips** button in the top-right corner of the main menu turns them back on and shows every card again.
 
 The cards and the rules for when each one shows are in `tutorials.gd`. A new tile type needs a topic there and a line in `topics_for`.
 
