@@ -14,6 +14,8 @@ const HOLD_DELAY := 0.3  # hold an arrow this long to start walking
 const HOLD_STEP := 0.14
 const MARGIN := 20.0
 const MAX_CELL := 110.0
+const HERO_CELL := 120.0  # menu animation tile size
+const HERO_LOOP := 4.4    # seconds per loop of the menu animation
 const RIM := 0.16  # outer walls are drawn as a thin rim this many cells thick
 const SWIPE_MIN := 36.0
 const MOVE_TIME := 0.09
@@ -100,6 +102,8 @@ var title_taps := 0
 var ui: Control
 var menu_screen: Control
 var menu_stars: Label
+var menu_hero: Control
+var menu_t := 0.0
 var continue_button: Button
 var map_screen: Control
 var zone_list: VBoxContainer
@@ -687,6 +691,9 @@ func _on_title_tapped() -> void:
 # --- Animation & drawing --------------------------------------------------------
 
 func _process(delta: float) -> void:
+	if screen == "menu":
+		menu_t = fmod(menu_t + delta, HERO_LOOP)
+		menu_hero.queue_redraw()
 	if screen != "play":
 		return
 	clock += delta
@@ -1276,20 +1283,13 @@ func _build_menu() -> void:
 		if e is InputEventMouseButton and e.pressed:
 			_on_title_tapped())
 	col.add_child(logo)
-	# Kip next to a crate, drawn with the game's own sprites.
-	var hero := HBoxContainer.new()
-	hero.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	hero.alignment = BoxContainer.ALIGNMENT_CENTER
-	hero.add_theme_constant_override("separation", 0)
-	for sprite in ["robot-right", "crate", "target"]:
-		var r := TextureRect.new()
-		r.texture = Sprites.icon(sprite)
-		r.custom_minimum_size = Vector2(140, 140)
-		r.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-		r.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-		r.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		hero.add_child(r)
-	col.add_child(hero)
+	# Kip pushing a crate onto a charger, on a loop, with the game's own sprites.
+	menu_hero = Control.new()
+	menu_hero.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	menu_hero.custom_minimum_size = Vector2(HERO_CELL * 4.0, HERO_CELL)
+	menu_hero.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	menu_hero.draw.connect(_draw_menu_hero)
+	col.add_child(menu_hero)
 	col.add_child(_label("Kip the cargo robot is restarting a dark space station, one battery crate at a time.", 26, C_DIM))
 	var gap := Control.new()
 	gap.custom_minimum_size = Vector2(0, 20)
@@ -1322,6 +1322,48 @@ func _build_menu() -> void:
 	tips_button.offset_right = -24
 	tips_button.offset_top = 24
 	tips_button.offset_bottom = 104
+
+
+## The menu's little scene: Kip walks right, pushes the crate two cells onto
+## the charger, the crate lights up, then everything fades and starts again.
+func _draw_menu_hero() -> void:
+	var t := menu_t
+	var smooth := func(a: float, b: float) -> float:
+		var k := clampf((t - a) / (b - a), 0.0, 1.0)
+		return k * k * (3.0 - 2.0 * k)
+	# Kip goes cell 0 -> 1 -> 2, the crate 1 -> 2 -> 3 (the charger).
+	var step: float = smooth.call(0.7, 1.15) + smooth.call(1.5, 1.95)
+	var done := t >= 1.95
+	var fade: float = 1.0 - smooth.call(3.6, 4.0) + smooth.call(4.05, HERO_LOOP)
+	if t < 3.6:
+		fade = 1.0
+	if t >= 4.0:  # faded out: fade back in on the starting picture
+		step = 0.0
+		done = false
+	var c := HERO_CELL
+	var mod := Color(1, 1, 1, fade)
+	var cell_rect := func(x: float) -> Rect2:
+		return Rect2(Vector2(x * c, 0), Vector2(c, c))
+	var spr := func(name: String, r: Rect2) -> void:
+		var m: Array = Sprites.MAP[name]
+		menu_hero.draw_texture_rect_region(Sprites.sheet(m[0]), r, Rect2(m[1] * 128, m[2] * 128, 128, 128), mod)
+	# A strip of floor under the scene
+	var floor := Rect2(Vector2(0, c * 0.08), Vector2(c * 4.0, c * 0.84))
+	menu_hero.draw_rect(floor, Color(C_FLOOR, 0.9))
+	for i in range(1, 4):
+		menu_hero.draw_line(Vector2(i * c, floor.position.y), Vector2(i * c, floor.end.y), C_FLOOR_LINE, 2.0)
+	if not done:
+		spr.call("target", cell_rect.call(3.0))
+	var box: Rect2 = cell_rect.call(1.0 + step).grow(-c * 0.1)
+	if done:
+		var glow := 0.3 + 0.15 * sin(menu_t * 6.0)
+		menu_hero.draw_circle(box.get_center(), c * 0.5, Color(C_TARGET, glow * fade), true, -1.0, true)
+	spr.call("crate-on-target" if done else "crate", box)
+	# Kip leans in a little while pushing.
+	var push := 0.0
+	if t > 0.55 and t < 2.05:
+		push = 0.06
+	spr.call("robot-right", cell_rect.call(step + push))
 
 
 func _build_map() -> void:
