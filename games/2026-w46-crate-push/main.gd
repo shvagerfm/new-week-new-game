@@ -14,6 +14,7 @@ const HOLD_DELAY := 0.3  # hold an arrow this long to start walking
 const HOLD_STEP := 0.14
 const MARGIN := 20.0
 const MAX_CELL := 110.0
+const RIM := 0.16  # outer walls are drawn as a thin rim this many cells thick
 const SWIPE_MIN := 36.0
 const MOVE_TIME := 0.09
 const BUMP_TIME := 0.12
@@ -84,6 +85,8 @@ var clock := 0.0
 
 # Layout
 var cell := 64.0
+var outer := {}  # wall cells on the room's border, drawn as a thin rim
+var core := Rect2i()  # floor and inner walls, the part of the map that gets drawn in full
 var origin := Vector2.ZERO
 
 # Touch
@@ -388,6 +391,7 @@ func _start_level(z: int, i: int) -> void:
 	zone_i = z
 	level_i = i
 	lv = zones[z].levels[i].rules
+	_find_outer_walls()
 	screen = "play"
 	_set_screen(play_hud)
 	_restart_attempt()
@@ -426,6 +430,20 @@ func _restart() -> void:
 	overlay.hide()
 	_snap()
 	_update_hud()
+
+
+## Restart asks first, so a stray tap doesn't throw away a long attempt.
+func _ask_restart() -> void:
+	if screen != "play" or overlay.visible:
+		return
+	if finished == "won":
+		_restart_attempt()
+		return
+	if history.is_empty():
+		return
+	hold_dir = Vector2i.ZERO
+	_show_overlay("Restart?", "Start this room over. You can still undo it.", -1,
+			[["Cancel", _hide_overlay], ["Restart", _restart]])
 
 
 func _undo() -> void:
@@ -618,7 +636,7 @@ func _on_key(event: InputEventKey) -> void:
 				_undo()
 		KEY_R:
 			if screen == "play" and not event.echo:
-				_restart()
+				_ask_restart()
 		KEY_H:
 			if screen == "play":
 				_on_booster("hint")
@@ -644,8 +662,8 @@ func _on_board(pos: Vector2) -> bool:
 
 
 func _back() -> void:
-	if overlay.visible and screen != "play":
-		_hide_overlay()
+	if overlay.visible and (screen != "play" or finished == ""):
+		_hide_overlay()  # popups on the map, or the restart question
 	elif screen == "play":
 		_show_levels()
 	elif screen == "levels":
@@ -717,9 +735,36 @@ func _layout() -> void:
 	if card != null and card.visible:
 		top = maxf(top, card.position.y + card.size.y + 12.0)
 	var area := Rect2(Vector2(MARGIN, top), view - Vector2(MARGIN * 2.0, top + BOTTOM_BAR))
-	cell = floorf(minf(minf(area.size.x / lv.size.x, area.size.y / lv.size.y), MAX_CELL))
-	origin = (area.position + (area.size - Vector2(lv.size) * cell) / 2.0).floor()
+	var span := Vector2(core.size) + Vector2.ONE * RIM * 2.0
+	cell = floorf(minf(minf(area.size.x / span.x, area.size.y / span.y), MAX_CELL))
+	origin = (area.position + (area.size - span * cell) / 2.0 - (Vector2(core.position) - Vector2.ONE * RIM) * cell).floor()
 	queue_redraw()
+
+
+## Outer walls only frame the room, so they get a thin rim instead of a whole
+## cell. A wall is outer when it touches the space outside the room, or when
+## no floor is next to it at all. Outer walls can never be blasted.
+func _find_outer_walls() -> void:
+	outer.clear()
+	var first := true
+	for p: Vector2i in lv.walls:
+		var near_floor := false
+		var near_outside := false
+		for dy in range(-1, 2):
+			for dx in range(-1, 2):
+				var q := p + Vector2i(dx, dy)
+				if lv.inside.has(q):
+					near_floor = true
+				elif not lv.walls.has(q):
+					near_outside = true
+		if near_outside or not near_floor:
+			outer[p] = true
+	for p: Vector2i in lv.inside:
+		core = Rect2i(p, Vector2i.ONE) if first else core.expand(p).expand(p + Vector2i.ONE)
+		first = false
+	for p: Vector2i in lv.walls:
+		if not outer.has(p):
+			core = core.expand(p).expand(p + Vector2i.ONE)
 
 
 func _cell_rect(p: Vector2) -> Rect2:
@@ -742,7 +787,10 @@ func _draw() -> void:
 		var pos := Vector2(p)
 		if crate_moves.has(p) and anim_t < 1.0:
 			pos = crate_moves[p].lerp(pos, k)
-		_draw_crate(pos, state.boxes[p], _crate_done(p) and anim_t >= 1.0, lv.goals.has(p))
+		# Only the crate that is still sliding waits for the animation to end
+		# before it lights up; crates already in place stay lit (no red flicker).
+		var moving: bool = crate_moves.has(p) and anim_t < 1.0
+		_draw_crate(pos, state.boxes[p], _crate_done(p) and not moving, lv.goals.has(p) and not moving)
 
 	var ppos := player_from.lerp(Vector2(state.p), k) if anim_t < 1.0 else Vector2(state.p)
 	if bump_t < 1.0:
@@ -784,8 +832,9 @@ func _is_wall_at(p: Vector2i) -> bool:
 ## where the wall meets open floor below, and a shadow cast onto the floor.
 func _draw_walls() -> void:
 	var side_h := cell * 0.2
+	_draw_rim()
 	for p: Vector2i in lv.walls:
-		if not _is_wall_at(p):
+		if not _is_wall_at(p) or outer.has(p):
 			continue
 		var below := p + Vector2i.DOWN
 		var right := p + Vector2i.RIGHT
@@ -796,7 +845,7 @@ func _draw_walls() -> void:
 			var fr := _cell_rect(Vector2(right))
 			draw_rect(Rect2(fr.position, Vector2(cell * 0.14, cell)), Color(0, 0, 0, 0.22))
 	for p: Vector2i in lv.walls:
-		if not _is_wall_at(p):
+		if not _is_wall_at(p) or outer.has(p):
 			continue
 		var r := _cell_rect(Vector2(p))
 		var open_below := not _is_wall_at(p + Vector2i.DOWN)
@@ -814,6 +863,43 @@ func _draw_walls() -> void:
 			draw_line(top.position, Vector2(top.position.x, r.end.y), C_WALL_EDGE, edge)
 		if not _is_wall_at(p + Vector2i.RIGHT):
 			draw_line(Vector2(top.end.x, top.position.y), Vector2(top.end.x, r.end.y), C_WALL_EDGE, edge)
+
+
+## The room's border: a thin strip along every side where an outer wall
+## meets the floor, plus small squares on the room's outside corners.
+func _draw_rim() -> void:
+	var t := cell * RIM
+	var edge := maxf(1.5, cell * 0.035)
+	for p: Vector2i in outer:
+		var r := _cell_rect(Vector2(p))
+		for d: Vector2i in [Vector2i.UP, Vector2i.DOWN, Vector2i.LEFT, Vector2i.RIGHT]:
+			if not lv.inside.has(p + d):
+				continue
+			var strip: Rect2
+			var face: PackedVector2Array  # the side that faces the floor
+			match d:
+				Vector2i.DOWN:
+					strip = Rect2(r.position.x, r.end.y - t, cell, t)
+					face = [strip.position + Vector2(0, t), strip.end]
+					# shadow on the floor below
+					draw_rect(Rect2(r.position.x, r.end.y, cell, cell * 0.12), Color(0, 0, 0, 0.3))
+				Vector2i.UP:
+					strip = Rect2(r.position.x, r.position.y, cell, t)
+					face = [strip.position, strip.position + Vector2(cell, 0)]
+				Vector2i.RIGHT:
+					strip = Rect2(r.end.x - t, r.position.y, t, cell)
+					face = [strip.position + Vector2(t, 0), strip.end]
+				Vector2i.LEFT:
+					strip = Rect2(r.position.x, r.position.y, t, cell)
+					face = [strip.position, strip.position + Vector2(0, cell)]
+			draw_rect(strip.grow(0.5), C_WALL_TOP)
+			draw_line(face[0], face[1], C_WALL_HI, edge)
+		for dx in [-1, 1]:
+			for dy in [-1, 1]:
+				var d := Vector2i(dx, dy)
+				if lv.inside.has(p + d) and not lv.inside.has(p + Vector2i(dx, 0)) and not lv.inside.has(p + Vector2i(0, dy)):
+					var corner := Vector2(r.end.x - t if dx > 0 else r.position.x, r.end.y - t if dy > 0 else r.position.y)
+					draw_rect(Rect2(corner, Vector2(t, t)).grow(0.5), C_WALL_TOP)
 
 
 func _draw_target(p: Vector2i) -> void:
@@ -1132,16 +1218,16 @@ func _update_hud() -> void:
 	title_label.text = "%d-%d  ·  %s" % [zone_i + 1, level_i + 1, lv.title]
 	var info := "Moves %d" % state.moves
 	if lv.limit > 0:
-		info = "Moves %d / %d" % [state.moves, lv.budget(state)]
+		info = "Moves %d/%d" % [state.moves, lv.budget(state)]
 	if lv.par > 0:
-		info += "    Best %d" % lv.par
+		info += "  Best %d" % lv.par
 	var placed := 0
 	for g in lv.goals:
 		if state.boxes.has(g) and _crate_done(g):
 			placed += 1
-	info += "    Charged %d / %d" % [placed, lv.goals.size()]
+	info += "  Charged %d/%d" % [placed, lv.goals.size()]
 	if state.keys > 0:
-		info += "    Keys %d" % state.keys
+		info += "  Keys %d" % state.keys
 	info_label.text = info
 	tip_label.text = lv.tip
 	tip_label.visible = lv.tip != "" and state.moves < 6 and tip_now == ""
@@ -1354,12 +1440,14 @@ func _build_play() -> void:
 	top.add_child(titles)
 	title_label = _label("", 34, C_TEXT)
 	titles.add_child(title_label)
-	info_label = _label("", 24, C_DIM)
+	info_label = _label("", 22, C_DIM)
 	titles.add_child(info_label)
-	var spacer := Control.new()
-	spacer.custom_minimum_size = Vector2(96, 0)
-	spacer.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	top.add_child(spacer)
+	# Undo and Restart sit up here, away from the arrows, so a missed tap on
+	# the d-pad can't hit them.
+	undo_button = _icon_button("undo", _undo)
+	top.add_child(undo_button)
+	restart_button = _icon_button("restart", _ask_restart)
+	top.add_child(restart_button)
 
 	tip_label = _label("", 26, C_DIM)
 	play_hud.add_child(tip_label)
@@ -1395,30 +1483,19 @@ func _build_play() -> void:
 		btn.add_theme_font_size_override("font_size", 26)
 		booster_row.add_child(btn)
 		booster_buttons[b] = btn
-	# Undo | d-pad | Restart
-	var row := HBoxContainer.new()
-	row.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	row.add_theme_constant_override("separation", 18)
-	bottom.add_child(row)
-	undo_button = _side_button("Undo", "undo", _undo)
-	row.add_child(undo_button)
 	dpad = _build_dpad()
-	row.add_child(dpad)
-	restart_button = _side_button("Restart", "restart", _restart)
-	row.add_child(restart_button)
+	dpad.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	bottom.add_child(dpad)
 
 
-## Undo / Restart next to the d-pad: icon above the word.
-func _side_button(text: String, icon: String, action: Callable) -> Button:
-	var b := _button(text, action)
+## Small square icon button for the top bar.
+func _icon_button(icon: String, action: Callable) -> Button:
+	var b := _button("", action)
+	b.custom_minimum_size = Vector2(100, 96)
+	b.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	b.icon = Sprites.icon(icon)
 	b.icon_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	b.vertical_icon_alignment = VERTICAL_ALIGNMENT_TOP
 	b.add_theme_constant_override("icon_max_width", 56)
-	b.add_theme_font_size_override("font_size", 28)
-	b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	b.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	b.custom_minimum_size = Vector2(0, 150)
 	return b
 
 

@@ -14,12 +14,12 @@ Kip, a little cargo robot, restarts an abandoned space station by pushing batter
 
 ## Controls
 
-Tap the arrow buttons under the board, or swipe on the board. Hold an arrow (or keep dragging) to keep walking. On a keyboard, use the arrows or WASD. Swipes that start on the bottom controls are ignored, so a press on an arrow never also counts as a swipe.
+Tap the arrow buttons under the board, or swipe on the board. Hold an arrow (or keep dragging) to keep walking. On a keyboard, use the arrows or WASD. Swipes that start on the bottom controls are ignored, so a press on an arrow never also counts as a swipe. Undo and Restart sit in the top bar, away from the arrows, and Restart asks before it clears the room.
 
 | Key | Action |
 | --- | --- |
 | Z, U, Backspace | Undo |
-| R | Restart (can be undone) |
+| R | Restart (asks first, and can be undone) |
 | H | Hint |
 | Esc | Back |
 | Enter, Space | Default button on a popup |
