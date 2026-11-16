@@ -27,7 +27,7 @@ const TOPICS := {
 	},
 	"undo": {
 		"title": "Undo and Restart",
-		"text": "Stuck? Undo takes back a move. Restart puts the room back as it was, and can be undone too.",
+		"text": "Stuck? Undo takes back a move. Restart starts the room over from the beginning.",
 		"icon": "undo",
 	},
 	"ice": {

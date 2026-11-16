@@ -427,15 +427,9 @@ func _restart() -> void:
 		return
 	if history.is_empty():
 		return
-	# Restart can be undone: the current position goes onto the history.
-	history.append(state)
-	state = lv.start.duplicate(true)
-	finished = ""
-	armed = ""
-	hint_dir = Vector2i.ZERO
-	overlay.hide()
-	_snap()
-	_update_hud()
+	# A fresh attempt: the undo history is cleared, so Undo can't bring back
+	# moves from before the restart.
+	_restart_attempt()
 
 
 ## Restart asks first, so a stray tap doesn't throw away a long attempt.
@@ -448,7 +442,7 @@ func _ask_restart() -> void:
 	if history.is_empty():
 		return
 	hold_dir = Vector2i.ZERO
-	_show_overlay("Restart?", "Start this room over. You can still undo it.", -1,
+	_show_overlay("Restart?", "Start this room over from the beginning?", -1,
 			[["Cancel", _hide_overlay], ["Restart", _restart]])
 
 
