@@ -17,6 +17,7 @@ const SOUNDS := {
 	"door": preload("res://sfx/door.wav"),
 	"crumble": preload("res://sfx/crumble.wav"),
 	"tool": preload("res://sfx/tool.wav"),
+	"finale": preload("res://sfx/finale.wav"),
 }
 const VOICES := 8
 ## Seconds before the same sound can play again (holding an arrow into a wall).
@@ -36,7 +37,7 @@ func _ready() -> void:
 
 
 ## pitch_jitter varies the pitch a little, so repeated steps don't drone.
-func play(sound: String, pitch_jitter := 0.0, volume_db := 0.0) -> void:
+func play(sound: String, pitch_jitter := 0.0, volume_db := 0.0, pitch := 1.0) -> void:
 	if muted or not SOUNDS.has(sound):
 		return
 	var now := Time.get_ticks_msec()
@@ -46,6 +47,6 @@ func play(sound: String, pitch_jitter := 0.0, volume_db := 0.0) -> void:
 	var p := _players[_next]
 	_next = (_next + 1) % VOICES
 	p.stream = SOUNDS[sound]
-	p.pitch_scale = 1.0 + randf_range(-pitch_jitter, pitch_jitter)
+	p.pitch_scale = pitch + randf_range(-pitch_jitter, pitch_jitter)
 	p.volume_db = volume_db
 	p.play()

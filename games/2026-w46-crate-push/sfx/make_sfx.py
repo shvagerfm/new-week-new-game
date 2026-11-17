@@ -193,4 +193,18 @@ save("tool", mix(
     tone(np.geomspace(1000, 3200, n), d, "sine") * env(n, 0.005, 0.12) * 0.3,
 ), peak=0.4)
 
+# The ending: the station powers up. A slow rising chord progression that
+# lands on a bright held chord with a shimmer on top.
+parts = []
+chords = [(["C4", "E4", "G4"], 0.0), (["A3", "C4", "E4"], 0.5), (["F3", "A3", "C4"], 1.0),
+          (["G3", "B3", "D4"], 1.5), (["C4", "E4", "G4", "C5"], 2.0)]
+for notes_, start in chords:
+    dd = 2.2 if start == 2.0 else 0.55
+    for nm in notes_:
+        parts.append(at(tone(note(nm), dd, "tri", 0.5) * env(int(RATE * dd), 0.03, dd * 0.9), start))
+    parts.append(at(tone(note(notes_[0]) / 2, dd, "sine", 0.6) * env(int(RATE * dd), 0.02, dd), start))
+for i, nm in enumerate(["C5", "E5", "G5", "C6", "E6", "G6", "C7"]):
+    parts.append(at(tone(note(nm), 0.5, "sine", 0.35) * env(int(RATE * 0.5), 0.003, 0.35), 2.0 + i * 0.07))
+save("finale", lowpass(mix(*parts), 4500), peak=0.6)
+
 print("wrote", sorted(f for f in os.listdir(OUT) if f.endswith(".wav")))

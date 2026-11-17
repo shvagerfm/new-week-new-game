@@ -38,6 +38,10 @@ A tip card under the room title teaches the game as it goes. Every card shows on
 
 The cards and the rules for when each one shows are in `tutorials.gd`. A new tile type needs a topic there and a line in `topics_for`.
 
+## Ending
+
+Solving the last room of the Core shows a **Power up** button. It opens the ending: the seven zone modules light up one by one around the core (each with a rising chime), then the core lights up with Kip inside and the finale plays. Then the stars total, a line about how complete the run is, and the credits fade in. A tap skips the light-up. Once every room is solved, the menu's Continue button becomes **The End** and plays it again. The code is in the Ending section of `main.gd`.
+
 ## Stars and tools
 
 - ★★★ means you used the fewest possible moves (the level's `par`) and no tools.
@@ -115,6 +119,7 @@ Every sound effect is made by `sfx/make_sfx.py` (Python with numpy) from sines, 
 | bump | Kip walks into something |
 | charge | a crate lands on a charger that takes it |
 | win / fail | the "Charged!" / "Oops" popup |
+| finale | the core lights up in the ending |
 | undo | Undo and Restart |
 | pickup, door, teleport, crumble | key or clock picked up, door opened, teleporter used, floor gives way or a wall is blasted |
 | tool | Hint, Pull, Blast or +5 moves |
