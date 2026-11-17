@@ -21,6 +21,7 @@ Tap the arrow buttons under the board, or swipe on the board. Hold an arrow (or 
 | Z, U, Backspace | Undo |
 | R | Restart (asks first, clears the undo history) |
 | H | Hint |
+| M | Sound on/off |
 | Esc | Back |
 | Enter, Space | Default button on a popup |
 
@@ -103,6 +104,23 @@ godot --headless --path games/2026-w46-crate-push --script tests/generate.gd -- 
 ```
 
 The checker, the hint and the game all use the same rules in `rules.gd`, so they always agree.
+
+## Sound
+
+Every sound effect is made by `sfx/make_sfx.py` (Python with numpy) from sines, soft square waves and filtered noise. Change a recipe there and run `python3 sfx/make_sfx.py` to rewrite the WAVs. `sfx.gd` plays them from a small pool of players, so sounds can overlap.
+
+| Sound | When |
+| --- | --- |
+| step / push | Kip moves / moves a crate (pitch varies a little each time) |
+| bump | Kip walks into something |
+| charge | a crate lands on a charger that takes it |
+| win / fail | the "Charged!" / "Oops" popup |
+| undo | Undo and Restart |
+| pickup, door, teleport, crumble | key or clock picked up, door opened, teleporter used, floor gives way or a wall is blasted |
+| tool | Hint, Pull, Blast or +5 moves |
+| click | menu and popup buttons |
+
+The speaker in the top-left corner of the main menu (or M) turns sound off and on, and the save file remembers it.
 
 ## Art
 

@@ -30,5 +30,10 @@ func _initialize() -> void:
 	if main.state.moves != 0 or not main.history.is_empty():
 		bad += 1
 		print("FAIL undo after restart brought back old moves")
+	# Every game event made its sound somewhere along the way.
+	for snd in ["step", "push", "charge", "undo", "teleport", "pickup", "door", "crumble"]:
+		if not main.sfx._last.has(snd):
+			bad += 1
+			print("FAIL sound never played: ", snd)
 	print("play test: %d failures" % bad)
 	quit(1 if bad else 0)
