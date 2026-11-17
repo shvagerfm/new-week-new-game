@@ -87,6 +87,7 @@ var bump_dir := Vector2.ZERO
 var step_t := 1.0
 var step_dir := Vector2.ZERO
 var step_push := false
+var still_since := 0.0  # clock time of Kip's last step or bump
 var clock := 0.0
 
 # Layout
@@ -721,6 +722,7 @@ func _start_animation(old: Dictionary, new: Dictionary) -> void:
 		step_t = 0.0
 		step_dir = Vector2(new.p - old.p).normalized()
 		step_push = not crate_moves.is_empty()
+		still_since = clock
 
 
 func _straight(a: Vector2i, b: Vector2i) -> bool:
@@ -738,6 +740,7 @@ func _snap() -> void:
 func _bump(dir: Vector2i) -> void:
 	bump_dir = Vector2(dir)
 	bump_t = 0.0
+	still_since = clock
 
 
 func _layout() -> void:
@@ -1042,17 +1045,23 @@ func _draw_robot(pos: Vector2) -> void:
 	if armed != "":
 		var glow := Color("ffd23f") if armed == "pull" else Color("ff5a36")
 		draw_circle(c, cell * 0.5, Color(glow, 0.3 + 0.1 * sin(clock * 8.0)), true, -1.0, true)
-	var name := "robot-down"
-	match facing:
-		Vector2i.UP: name = "robot-up"
-		Vector2i.LEFT: name = "robot-left"
-		Vector2i.RIGHT: name = "robot-right"
 
-	# Idle: a slow hover. Each step: a small hop with squash and stretch,
-	# a lean forward while pushing, and dust puffs left behind.
+	# Frames from the sprite sheet: drive or push while stepping (the clock
+	# keeps the wheels turning across held steps), push while bumping into
+	# something, and idle / look around while standing still.
+	var tex: Texture2D
+	if step_t < 1.0:
+		tex = Kip.frame(&"push" if step_push else &"drive", clock)
+	elif bump_t < 1.0:
+		tex = Kip.frame(&"push", clock)
+	else:
+		tex = Kip.idle_frame(maxf(clock - still_since - STEP_TIME, 0.0))
+
+	# On top of the frames, each step is a small hop with squash and stretch
+	# and a lean forward while pushing.
 	var hop := 0.0
-	var sx := 1.0 + 0.015 * sin(clock * 3.0)
-	var sy := 1.0 - 0.015 * sin(clock * 3.0)
+	var sx := 1.0
+	var sy := 1.0
 	var lean := 0.0
 	if step_t < 1.0:
 		var t := step_t
@@ -1063,7 +1072,6 @@ func _draw_robot(pos: Vector2) -> void:
 		sx -= 0.08 * w
 		if step_push:
 			lean = sin(minf(t * 1.3, 1.0) * PI) * 0.14
-		_draw_dust(c, t)
 	if bump_t < 1.0:
 		lean += sin(bump_t * PI) * 0.08
 
@@ -1078,50 +1086,13 @@ func _draw_robot(pos: Vector2) -> void:
 	if dir.x != 0.0:
 		ang = lean * signf(dir.x) * 0.9
 	var off := dir * lean * cell * 0.35 + Vector2(0, -hop * cell)
-	# scale around the robot's feet so a squash stays on the floor
+	# scale around the robot's feet so a squash stays on the floor, then turn
+	# the down-facing frame toward where Kip faces
 	var feet := c + Vector2(0, cell * 0.4) + off
-	draw_set_transform(feet, ang, Vector2(sx, sy))
-	_spr(name, Rect2(Vector2(-cell / 2.0, -cell * 0.9), Vector2(cell, cell)))
-	_draw_eye(name, step_t >= 1.0 and bump_t >= 1.0)
+	var body := Transform2D(ang, Vector2(sx, sy), 0.0, feet)
+	draw_set_transform_matrix(body * Transform2D(Kip.angle(facing), Vector2(0, -cell * 0.4)))
+	draw_texture_rect(tex, Rect2(-cell / 2.0, -cell / 2.0, cell, cell), false)
 	draw_set_transform(Vector2.ZERO)
-
-
-## Kip's lens: a soft glow, and while standing still a blink every few
-## seconds (sometimes a double blink). Drawn in the robot's own transform.
-const EYE := {"robot-up": Vector2(64, 33), "robot-down": Vector2(64, 98),
-		"robot-left": Vector2(32, 62), "robot-right": Vector2(96, 62)}
-
-func _draw_eye(name: String, idle: bool) -> void:
-	var e: Vector2 = EYE[name] / 128.0 * cell - Vector2(cell / 2.0, cell * 0.9)
-	draw_circle(e, cell * 0.11, Color(0.3, 1.0, 0.9, 0.12 + 0.08 * sin(clock * 4.0)), true, -1.0, true)
-	if not idle:
-		return
-	var t := fmod(clock, 3.6)
-	var cyc := int(clock / 3.6)
-	var shut := 0.0
-	if t < 0.16:
-		shut = sin(t / 0.16 * PI)
-	elif cyc % 3 == 2 and t > 0.24 and t < 0.40:
-		shut = sin((t - 0.24) / 0.16 * PI)
-	if shut <= 0.0:
-		return
-	var rad := cell * 0.075
-	draw_circle(e, rad * shut, Color(0.12, 0.14, 0.2), true, -1.0, true)
-	if shut > 0.6:
-		var side := Vector2(rad, 0) if name == "robot-up" or name == "robot-down" else Vector2(0, rad)
-		draw_line(e - side, e + side, Color(0.3, 1.0, 0.9), cell * 0.025, true)
-
-
-func _draw_dust(c: Vector2, t: float) -> void:
-	var back := -step_dir
-	var side := Vector2(-step_dir.y, step_dir.x)
-	var base := c + Vector2(0, cell * 0.3) + back * cell * 0.25
-	var n := 4 if step_push else 3
-	for i in n:
-		var s := float(i) / float(n - 1) - 0.5
-		var p := base + side * s * cell * 0.4 + back * t * cell * 0.25 + Vector2(0, -t * cell * 0.12)
-		var rad := cell * (0.05 + 0.06 * t) * (1.2 if step_push else 1.0)
-		draw_circle(p, rad, Color(0.75, 0.78, 0.9, 0.45 * (1.0 - t)), true, -1.0, true)
 
 
 
@@ -1479,11 +1450,16 @@ func _draw_menu_hero() -> void:
 		var glow := 0.3 + 0.15 * sin(menu_t * 6.0)
 		menu_hero.draw_circle(box.get_center(), c * 0.5, Color(C_TARGET, glow * fade), true, -1.0, true)
 	spr.call("crate-on-target" if done else "crate", box)
-	# Kip leans in a little while pushing.
+	# Kip leans in a little while pushing, with the push frames playing.
 	var push := 0.0
+	var tex := Kip.idle_frame(menu_t)
 	if t > 0.55 and t < 2.05:
 		push = 0.06
-	spr.call("robot-right", cell_rect.call(step + push))
+		tex = Kip.frame(&"push", menu_t)
+	var kr: Rect2 = cell_rect.call(step + push)
+	menu_hero.draw_set_transform(kr.get_center(), Kip.angle(Vector2i.RIGHT))
+	menu_hero.draw_texture_rect(tex, Rect2(-kr.size / 2.0, kr.size), false, mod)
+	menu_hero.draw_set_transform(Vector2.ZERO)
 
 
 func _build_map() -> void:
