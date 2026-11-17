@@ -61,6 +61,8 @@ var best := {}        # level id -> stars (1..3)
 var intro_seen := {}  # zone id -> true
 var tips_seen := {}   # tip card id -> true (see tutorials.gd)
 var tips_off := false
+var sound_on := true
+var sfx: Sfx
 
 var screen := ""
 var zone_i := 0
@@ -134,6 +136,7 @@ var overlay_text: Label
 var overlay_buttons: HBoxContainer
 var overlay_items: GridContainer
 var tips_button: Button
+var sound_button: Button
 
 # Tip cards
 var card: PanelContainer
@@ -150,7 +153,10 @@ var tip_moves := 0    # moves made while the current card is up
 
 func _ready() -> void:
 	zones = Campaign.load_zones()
+	sfx = Sfx.new()
+	add_child(sfx)
 	_load_progress()
+	sfx.muted = not sound_on
 	_build_ui()
 	get_viewport().size_changed.connect(_layout)
 	_show_menu()
@@ -169,6 +175,7 @@ func _show_menu() -> void:
 	menu_stars.text = "%d / %d" % [got, total]
 	continue_button.visible = not best.is_empty() and _next_level() != Vector2i(-1, -1)
 	tips_button.text = "Tips: Off" if tips_off else "Tips: On"
+	_update_sound_button()
 	_set_screen(menu_screen)
 
 
@@ -372,6 +379,7 @@ func _load_progress() -> void:
 	intro_seen = cfg.get_value("progress", "intro_seen", {})
 	tips_seen = cfg.get_value("progress", "tips_seen", {})
 	tips_off = cfg.get_value("progress", "tips_off", false)
+	sound_on = cfg.get_value("settings", "sound", true)
 
 
 func _save_progress() -> void:
@@ -380,6 +388,7 @@ func _save_progress() -> void:
 	cfg.set_value("progress", "intro_seen", intro_seen)
 	cfg.set_value("progress", "tips_seen", tips_seen)
 	cfg.set_value("progress", "tips_off", tips_off)
+	cfg.set_value("settings", "sound", sound_on)
 	cfg.save(SAVE_PATH)
 
 
@@ -434,6 +443,7 @@ func _restart() -> void:
 		return
 	# A fresh attempt: the undo history is cleared, so Undo can't bring back
 	# moves from before the restart.
+	sfx.play("undo", 0.0, -2.0)
 	_restart_attempt()
 
 
@@ -455,6 +465,7 @@ func _undo() -> void:
 	if history.is_empty() or finished == "won":
 		return
 	state = history.pop_back()
+	sfx.play("undo", 0.05)
 	finished = ""
 	armed = ""
 	hint_dir = Vector2i.ZERO
@@ -472,8 +483,10 @@ func _try_move(dir: Vector2i) -> void:
 		armed = ""
 		var b := lv.blast(state, dir)
 		if b.is_empty():
+			sfx.play("bump")
 			_toast("No inner wall there to blast.")
 		else:
+			sfx.play("crumble", 0.0, 3.0)
 			_use_booster("blast")
 			history.append(state)
 			state = b
@@ -491,6 +504,7 @@ func _try_move(dir: Vector2i) -> void:
 	_start_animation(state, next)
 	var before := state
 	state = next
+	_move_sounds(before, next)
 	hint_dir = Vector2i.ZERO
 	_tip_after_move(before, next)
 	var o := lv.outcome(state)
@@ -533,6 +547,7 @@ func _on_won() -> void:
 		buttons.append(["Map", _show_map])
 	await get_tree().create_timer(0.45).timeout
 	if finished == "won" and screen == "play":
+		sfx.play("win")
 		_show_overlay("Charged!", text, stars, buttons)
 
 
@@ -542,6 +557,7 @@ func _go_next_zone() -> void:
 
 
 func _on_failed(reason: String) -> void:
+	sfx.play("fail")
 	await get_tree().create_timer(0.35).timeout
 	if finished == reason and screen == "play":
 		_show_overlay("Oops", reason, -1, [["Undo", _undo], ["Restart", _restart]])
@@ -558,6 +574,7 @@ func _on_booster(b: String) -> void:
 	match b:
 		"pull", "blast":
 			armed = "" if armed == b else b
+			sfx.play("tool" if armed != "" else "click")
 			if armed == "pull":
 				_toast("Walk away from a crate to pull it along.")
 			elif armed == "blast":
@@ -569,6 +586,7 @@ func _on_booster(b: String) -> void:
 			history.append(state)
 			state = state.duplicate(true)
 			state.bonus += 5
+			sfx.play("tool")
 			_use_booster(b)
 		"hint":
 			_run_hint()
@@ -588,6 +606,7 @@ func _run_hint() -> void:
 	if sol == null or sol == "":
 		_toast("No way forward from here. Try Undo.")
 		return
+	sfx.play("tool")
 	_use_booster("hint")
 	hint_dir = {"u": Vector2i.UP, "d": Vector2i.DOWN, "l": Vector2i.LEFT, "r": Vector2i.RIGHT}[sol[0]]
 	_toast("")
@@ -645,6 +664,9 @@ func _on_key(event: InputEventKey) -> void:
 		KEY_H:
 			if screen == "play":
 				_on_booster("hint")
+		KEY_M:
+			if not event.echo:
+				_toggle_sound()
 		KEY_ESCAPE:
 			_back()
 		KEY_ENTER, KEY_KP_ENTER, KEY_SPACE:
@@ -738,6 +760,7 @@ func _snap() -> void:
 
 
 func _bump(dir: Vector2i) -> void:
+	sfx.play("bump", 0.06)
 	bump_dir = Vector2(dir)
 	bump_t = 0.0
 	still_since = clock
@@ -1191,6 +1214,46 @@ func _toggle_tips() -> void:
 	_show_menu()
 
 
+func _toggle_sound() -> void:
+	sound_on = not sound_on
+	sfx.muted = not sound_on
+	sfx.play("click")
+	_save_progress()
+	_update_sound_button()
+	if screen != "menu":
+		_toast("Sound on" if sound_on else "Sound off")
+
+
+func _update_sound_button() -> void:
+	if sound_button:
+		sound_button.icon = UiArt.tex("sound-on" if sound_on else "sound-off")
+
+
+## One sound for what Kip did this step, plus one for anything it set off.
+func _move_sounds(before: Dictionary, after: Dictionary) -> void:
+	sfx.play("push" if before.boxes != after.boxes else "step", 0.08)
+	if _charged(after) > _charged(before):
+		sfx.play("charge")
+	if after.picked.size() > before.picked.size() or after.bonus > before.bonus:
+		sfx.play("pickup")
+	if after.open.size() > before.open.size():
+		sfx.play("door")
+	if after.crumbled.size() > before.crumbled.size():
+		sfx.play("crumble")
+	if lv.teleports.has(after.p) and after.p != before.p \
+			and absi(after.p.x - before.p.x) + absi(after.p.y - before.p.y) > 1:
+		sfx.play("teleport")
+
+
+## Crates sitting on a charger that takes them.
+func _charged(s: Dictionary) -> int:
+	var n := 0
+	for g in lv.goals:
+		if s.boxes.has(g) and (lv.goals[g] == "" or s.boxes[g] == lv.goals[g]):
+			n += 1
+	return n
+
+
 ## HUD controls the current card points at with a ring.
 func _ring_targets() -> Array:
 	match tip_now:
@@ -1413,6 +1476,18 @@ func _build_menu() -> void:
 	tips_button.offset_right = -24
 	tips_button.offset_top = 24
 	tips_button.offset_bottom = 104
+	# Sound on/off in the top-left corner, opposite the tips toggle.
+	sound_button = _button("", _toggle_sound, false)
+	sound_button.icon = UiArt.tex("sound-on")
+	sound_button.icon_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	sound_button.expand_icon = true
+	sound_button.add_theme_constant_override("icon_max_width", 56)
+	menu_screen.add_child(sound_button)
+	sound_button.set_anchors_and_offsets_preset(Control.PRESET_TOP_LEFT)
+	sound_button.offset_left = 24
+	sound_button.offset_right = 124
+	sound_button.offset_top = 24
+	sound_button.offset_bottom = 104
 
 
 ## The menu's little scene: Kip walks right, pushes the crate two cells onto
@@ -1621,7 +1696,7 @@ func _build_play() -> void:
 	booster_row.alignment = BoxContainer.ALIGNMENT_CENTER
 	bottom.add_child(booster_row)
 	for b in BOOSTERS:
-		var btn := _button(BOOSTERS[b].label, _on_booster.bind(b))
+		var btn := _button(BOOSTERS[b].label, _on_booster.bind(b), false)
 		btn.icon = Sprites.icon(BOOSTERS[b].icon)
 		# Compact, fixed-size tool buttons, centered in their row
 		btn.custom_minimum_size = Vector2(156, 64)
@@ -1637,7 +1712,7 @@ func _build_play() -> void:
 
 ## Small square icon button for the top bar.
 func _icon_button(icon: String, action: Callable) -> Button:
-	var b := _button("", action)
+	var b := _button("", action, false)
 	b.custom_minimum_size = Vector2(100, 96)
 	b.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	b.icon = Sprites.icon(icon)
@@ -1863,10 +1938,13 @@ func _label(text: String, size: int, color: Color) -> Label:
 	return l
 
 
-func _button(text: String, action: Callable) -> Button:
+## click: play the click sound. Off for buttons that make their own sound.
+func _button(text: String, action: Callable, click := true) -> Button:
 	var b := Button.new()
 	b.text = text
 	b.focus_mode = Control.FOCUS_NONE  # keep arrow keys for walking
+	if click:
+		b.pressed.connect(func() -> void: sfx.play("click", 0.04))
 	b.pressed.connect(action)
 	return b
 
