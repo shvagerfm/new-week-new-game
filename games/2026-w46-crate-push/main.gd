@@ -16,6 +16,9 @@ const MARGIN := 20.0
 const MAX_CELL := 110.0
 const HERO_CELL := 120.0  # menu animation tile size
 const HERO_LOOP := 4.4    # seconds per loop of the menu animation
+const END_FIRST := 0.9    # ending: when the first zone module lights up
+const END_GAP := 0.42     # ending: seconds between zone modules
+const END_CORE := 0.5     # ending: pause before the core lights after the last module
 const RIM := 0.16  # outer walls are drawn as a thin rim this many cells thick
 const SWIPE_MIN := 36.0
 const MOVE_TIME := 0.12
@@ -116,6 +119,13 @@ var map_screen: Control
 var zone_list: VBoxContainer
 var map_stars: Label
 var levels_screen: Control
+var ending_screen: Control
+var ending_art: Control
+var ending_text: Control
+var ending_stars: Label
+var ending_note: Label
+var ending_t := 0.0
+var ending_lit := 0  # zone modules lit so far (the core counts as one more)
 var levels_title: Label
 var levels_story: Label
 var levels_progress: Control
@@ -173,7 +183,10 @@ func _show_menu() -> void:
 			got += best.get(l.id, 0)
 			total += 3
 	menu_stars.text = "%d / %d" % [got, total]
-	continue_button.visible = not best.is_empty() and _next_level() != Vector2i(-1, -1)
+	# Once every room is solved, Continue becomes a way to watch the ending again.
+	var all_done := not best.is_empty() and _next_level() == Vector2i(-1, -1)
+	continue_button.visible = not best.is_empty()
+	continue_button.text = "The End" if all_done else "Continue"
 	tips_button.text = "Tips: Off" if tips_off else "Tips: On"
 	_update_sound_button()
 	_set_screen(menu_screen)
@@ -194,6 +207,8 @@ func _continue() -> void:
 	var n := _next_level()
 	if n.x >= 0:
 		_start_level(n.x, n.y)
+	else:
+		_show_ending()
 
 
 func _show_map() -> void:
@@ -341,7 +356,7 @@ func _show_levels() -> void:
 
 func _set_screen(c: Control) -> void:
 	hold_dir = Vector2i.ZERO
-	for s in [menu_screen, map_screen, levels_screen, play_hud]:
+	for s in [menu_screen, map_screen, levels_screen, play_hud, ending_screen]:
 		s.visible = s == c
 	overlay.hide()
 	queue_redraw()
@@ -403,6 +418,185 @@ func _stars_for(moves: int, par: int, used: bool) -> int:
 	if used:
 		stars = mini(stars, 2)
 	return stars
+
+
+# --- Ending ---------------------------------------------------------------------
+
+## The last room is solved: the zones light up one by one around the core,
+## then the core, then the totals and credits fade in.
+func _show_ending() -> void:
+	screen = "ending"
+	ending_t = 0.0
+	ending_lit = 0
+	var got := 0
+	var total := 0
+	var solved := 0
+	var rooms := 0
+	for z in zones:
+		for l in z.levels:
+			got += best.get(l.id, 0)
+			total += 3
+			rooms += 1
+			if best.has(l.id):
+				solved += 1
+	ending_stars.text = "%d / %d" % [got, total]
+	if got == total:
+		ending_note.text = "Every room in the fewest moves. A perfect station!"
+	elif solved < rooms:
+		ending_note.text = "%d of %d rooms charged. The rest are still waiting in the dark." % [solved, rooms]
+	else:
+		ending_note.text = "All %d rooms charged. Replay rooms for 3 stars to make it perfect." % rooms
+	ending_text.modulate.a = 0.0
+	_set_screen(ending_screen)
+
+
+func _ending_core_time() -> float:
+	return END_FIRST + END_GAP * (zones.size() - 1) + END_CORE
+
+
+func _ending_tick(delta: float) -> void:
+	ending_t += delta
+	# One rising chime per zone module, then the finale for the core.
+	while ending_lit < zones.size() and ending_t >= END_FIRST + END_GAP * ending_lit:
+		sfx.play("charge", 0.0, -3.0, pow(2.0, ending_lit * 2.0 / 12.0))
+		ending_lit += 1
+	if ending_lit == zones.size() and ending_t >= _ending_core_time():
+		sfx.play("finale")
+		ending_lit += 1
+	var show := clampf((ending_t - _ending_core_time() - 0.6) / 0.8, 0.0, 1.0)
+	ending_text.modulate.a = show
+	ending_art.queue_redraw()
+
+
+## Tap anywhere during the light-up to skip to the end of it.
+func _skip_ending_intro(e: InputEvent) -> void:
+	if screen != "ending" or ending_t >= _ending_core_time() + 0.6:
+		return
+	if (e is InputEventMouseButton or e is InputEventScreenTouch) and e.pressed:
+		while ending_lit < zones.size():
+			ending_lit += 1  # skipped modules light up silently
+		ending_t = _ending_core_time() - 0.01
+
+
+func _build_ending() -> void:
+	ending_screen = _full_rect(ui)
+	ending_art = _full_rect(ending_screen)
+	ending_art.mouse_filter = Control.MOUSE_FILTER_STOP
+	ending_art.gui_input.connect(_skip_ending_intro)
+	ending_art.draw.connect(_draw_ending)
+	var col := VBoxContainer.new()
+	col.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	col.add_theme_constant_override("separation", 14)
+	col.alignment = BoxContainer.ALIGNMENT_END
+	ending_screen.add_child(col)
+	col.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_cap_width(col, 40, 620)
+	col.offset_top = 640
+	col.offset_bottom = -40
+	ending_text = col
+	col.add_child(_label("STATION ONLINE", 58, C_GOAL))
+	col.add_child(_label("Every zone has power again. The lights are back on, and Kip can finally rest.", 28, C_TEXT))
+	var count := HBoxContainer.new()
+	count.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	count.alignment = BoxContainer.ALIGNMENT_CENTER
+	count.add_theme_constant_override("separation", 10)
+	count.add_child(_ui_rect("star-filled", Vector2(52, 52)))
+	ending_stars = _label("", 40, C_STAR)
+	ending_stars.autowrap_mode = TextServer.AUTOWRAP_OFF
+	count.add_child(ending_stars)
+	col.add_child(count)
+	ending_note = _label("", 24, C_DIM)
+	col.add_child(ending_note)
+	var gap := Control.new()
+	gap.custom_minimum_size = Vector2(0, 8)
+	gap.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	col.add_child(gap)
+	col.add_child(_label("CRATE PUSH", 30, C_TEXT))
+	col.add_child(_label("Made by Dima for New Week, New Game\nArt made with SpriteCook · Sounds made in code\nBuilt with Godot", 22, C_DIM))
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 16)
+	row.custom_minimum_size = Vector2(0, 110)
+	col.add_child(row)
+	var menu := _button("Menu", _show_menu)
+	menu.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.add_child(menu)
+	var map := _primary_button("Map", _show_map)
+	map.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.add_child(map)
+
+
+## The station: seven zone modules in a ring around the core, joined by
+## struts. Each module lights up in its zone's color, then power flows along
+## the struts and the core lights up with Kip inside.
+func _draw_ending() -> void:
+	var c := ending_art
+	var size := c.size
+	var t := ending_t
+	var smooth := func(a: float, b: float) -> float:
+		var k := clampf((t - a) / (b - a), 0.0, 1.0)
+		return k * k * (3.0 - 2.0 * k)
+	var core_t := _ending_core_time()
+	var core_on: float = smooth.call(core_t, core_t + 0.7)
+	# Starfield, brighter once the station is on.
+	for i in 90:
+		var h := hash(i * 7919)
+		var p := Vector2(float(h % 1000) / 1000.0 * size.x, float((h / 1000) % 1000) / 1000.0 * size.y)
+		var tw := 0.5 + 0.5 * sin(t * (1.0 + float(i % 5) * 0.4) + float(i))
+		c.draw_circle(p, 1.2 + float(i % 3) * 0.6, Color(1, 1, 1, (0.15 + 0.35 * tw) * (0.6 + 0.4 * core_on)))
+	var center := Vector2(size.x / 2.0, 330.0)
+	var ring := minf(230.0, size.x * 0.34)
+	var n := zones.size()
+	# A soft glow behind the station once the core is on.
+	for k in 6:
+		c.draw_circle(center, ring * (1.6 - k * 0.2), Color(C_GOAL, 0.025 * core_on))
+	var mods: Array[Vector2] = []
+	for i in n:
+		var a := -PI / 2.0 + TAU * i / n
+		mods.append(center + Vector2(cos(a), sin(a)) * ring)
+	# Struts, with a pulse of power running from each lit module to the core.
+	for i in n:
+		var on: float = smooth.call(END_FIRST + END_GAP * i, END_FIRST + END_GAP * i + 0.3)
+		var col: Color = zones[i].color
+		var from := mods[i]
+		c.draw_line(from, center, Color("2b3055"), 14.0, true)
+		if on > 0.0:
+			c.draw_line(from, center, Color(col, 0.55 * on), 6.0, true)
+			var f := fmod(t * 0.9 + i * 0.13, 1.0)
+			c.draw_circle(from.lerp(center, f), 6.0, Color(col.lightened(0.4), on), true, -1.0, true)
+	# Modules
+	var box := 112.0
+	for i in n:
+		var on: float = smooth.call(END_FIRST + END_GAP * i, END_FIRST + END_GAP * i + 0.3)
+		var col: Color = zones[i].color
+		var r := Rect2(mods[i] - Vector2.ONE * box / 2.0, Vector2.ONE * box)
+		if on > 0.0:
+			var pulse := 0.5 + 0.5 * sin(t * 3.0 + i)
+			c.draw_circle(mods[i], box * (0.75 + 0.06 * pulse), Color(col, 0.18 * on), true, -1.0, true)
+		var st := StyleBoxFlat.new()
+		st.bg_color = Color("1d2034").lerp(col.darkened(0.55), on)
+		st.border_color = Color("3b4170").lerp(col, on)
+		st.set_border_width_all(4)
+		st.set_corner_radius_all(26)
+		st.anti_aliasing = true
+		c.draw_style_box(st, r)
+		var icon := UiArt.tex(UiArt.zone_icon(zones[i].id))
+		var isz := icon.get_size()
+		var fit := (box - 30.0) / maxf(isz.x, isz.y)
+		var ir := Rect2(mods[i] - isz * fit / 2.0, isz * fit)
+		var shade := Color(0.25, 0.27, 0.35).lerp(Color.WHITE, on)
+		c.draw_texture_rect(icon, ir, false, shade)
+	# Core with Kip inside.
+	var core_r := 92.0
+	for k in 4:
+		c.draw_circle(center, core_r * (1.0 + 0.25 * k) * (1.0 + 0.04 * sin(t * 2.5)),
+				Color(C_GOAL, 0.12 * core_on), true, -1.0, true)
+	c.draw_circle(center, core_r, Color("1d2034").lerp(Color("4a3420"), core_on), true, -1.0, true)
+	c.draw_circle(center, core_r, Color("3b4170").lerp(C_GOAL, core_on), false, 6.0, true)
+	# Kip dozes with its eye shut in the dark core and wakes up when it lights.
+	var kip := Kip.idle_frame(t - core_t) if core_on > 0.0 else Kip.FRAMES.get_frame_texture(&"idle", 4)
+	var ks := core_r * 1.3
+	c.draw_texture_rect(kip, Rect2(center - Vector2.ONE * ks / 2.0, Vector2.ONE * ks), false,
+			Color(0.45, 0.47, 0.55).lerp(Color.WHITE, core_on))
 
 
 # --- Board ----------------------------------------------------------------------
@@ -543,8 +737,8 @@ func _on_won() -> void:
 			text += "\n\n%s is powered up. %s is open." % [zones[zone_i].name, zones[zone_i + 1].name]
 		buttons.append(["Next zone", _go_next_zone])
 	else:
-		text += "\n\nThe core is back online. The station lights up. Thanks, Kip!"
-		buttons.append(["Map", _show_map])
+		text += "\n\nThe core is back online."
+		buttons.append(["Power up", _show_ending])
 	await get_tree().create_timer(0.45).timeout
 	if finished == "won" and screen == "play":
 		sfx.play("win")
@@ -693,6 +887,8 @@ func _back() -> void:
 		_hide_overlay()  # popups on the map, or the restart question
 	elif screen == "play":
 		_show_levels()
+	elif screen == "ending":
+		_show_menu()
 	elif screen == "levels":
 		_show_map()
 	elif screen == "map":
@@ -717,6 +913,8 @@ func _process(delta: float) -> void:
 	if screen == "menu":
 		menu_t = fmod(menu_t + delta, HERO_LOOP)
 		menu_hero.queue_redraw()
+	if screen == "ending":
+		_ending_tick(delta)
 	if screen != "play":
 		return
 	clock += delta
@@ -1414,6 +1612,7 @@ func _build_ui() -> void:
 	_build_menu()
 	_build_map()
 	_build_levels()
+	_build_ending()
 	_build_play()
 	_build_card()
 	_build_overlay()

@@ -30,6 +30,13 @@ func _initialize() -> void:
 	if main.state.moves != 0 or not main.history.is_empty():
 		bad += 1
 		print("FAIL undo after restart brought back old moves")
+	# The ending lights every zone and the core, then shows the totals.
+	main._show_ending()
+	for k in 60:
+		main._ending_tick(0.1)
+	if main.screen != "ending" or main.ending_lit != main.zones.size() + 1 or main.ending_text.modulate.a < 1.0:
+		bad += 1
+		print("FAIL ending did not play through")
 	# Every game event made its sound somewhere along the way.
 	for snd in ["step", "push", "charge", "undo", "teleport", "pickup", "door", "crumble"]:
 		if not main.sfx._last.has(snd):
