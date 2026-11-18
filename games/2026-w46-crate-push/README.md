@@ -4,7 +4,7 @@
 
 Kip, a little cargo robot, restarts an abandoned space station by pushing battery crates onto their chargers. The game has 60 rooms in seven zones, and each zone adds a mechanic and a tool.
 
-The text for the itch.io page (tagline, description, tags, controls) is in `store/itch.md`.
+The text for the itch.io page (tagline, description, tags, controls, AI disclosure) is in `store/itch.md`, and its screenshots and GIFs are in `store/screenshots/` (made by `tests/store_shots.gd`).
 
 | Zone | New mechanic | New tool |
 | --- | --- | --- |
@@ -29,7 +29,7 @@ Tap the arrow buttons under the board, or swipe on the board. Hold an arrow (or 
 | Esc | Back |
 | Enter, Space | Default button on a popup |
 
-Tap the CRATE PUSH logo on the main menu seven times to unlock every zone, for testing.
+In a debug build (running from the editor, or a debug export), tapping the CRATE PUSH logo on the main menu seven times marks every room solved, for testing. Release exports ignore the taps.
 
 ## Tips
 
