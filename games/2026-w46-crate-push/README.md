@@ -4,7 +4,7 @@
 
 Kip, a little cargo robot, restarts an abandoned space station by pushing battery crates onto their chargers. The game has 60 rooms in seven zones, and each zone adds a mechanic and a tool.
 
-The text for the itch.io page (tagline, description, tags, controls, AI disclosure) is in `store/itch.md`, and its screenshots and GIFs are in `store/screenshots/` (made by `tests/store_shots.gd`).
+The text for the itch.io page (tagline, description, tags, controls, AI disclosure) is in `store/itch.md`, and its screenshots and GIFs are in `store/screenshots/` (made by `tests/store_shots.gd`). The 43-second portrait trailer `store/trailer.mp4` is recorded from the real game by `tests/trailer.gd` with Godot's movie maker (the command is at the top of that script). itch.io embeds video only through a YouTube or Vimeo link.
 
 | Zone | New mechanic | New tool |
 | --- | --- | --- |
