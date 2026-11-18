@@ -1,6 +1,10 @@
 # Crate Push
 
-Kip, a little cargo robot, restarts an abandoned space station by pushing battery crates onto their chargers. The game has seven zones, and each one adds a mechanic and a tool.
+![Crate Push icon](art/icon/android-192.png)
+
+Kip, a little cargo robot, restarts an abandoned space station by pushing battery crates onto their chargers. The game has 60 rooms in seven zones, and each zone adds a mechanic and a tool.
+
+The text for the itch.io page (tagline, description, tags, controls) is in `store/itch.md`.
 
 | Zone | New mechanic | New tool |
 | --- | --- | --- |
@@ -133,3 +137,4 @@ The speaker in the top-left corner of the main menu (or M) turns sound off and o
 - `art/source/kip/kip-down-128.png` holds Kip's animation frames (6 x 4 grid of 128 px frames, facing down): idle, drive, push and look around. `kip.tres` is the matching SpriteFrames resource, and `kip.gd` picks the frame on the board and rotates it to face left, right or up. Kip drives while stepping, pushes while moving a crate or bumping a wall, and while standing still bobs, blinks every few seconds and looks around after 4 s. The sheet was re-centered from the generated image, whose cells drifted by up to 10 px.
 - `art/source/ui/crate-push-ui-assets.png` holds the menu art: logo, buttons, level tiles, stars, panel frame and zone icons. Some pieces cross the 256 px grid, so `ui_art.gd` and `ui/atlas.json` store the measured bounds of each piece. Buttons and the panel frame are stretched as 9-slice boxes.
 - The mockups in `art/source/ui/` are reference only and are not used in the game.
+- `art/icon/` holds the app icon: Kip pushing a crate, seen from above. `icon-1024.png` is the original (rounded corners, transparent outside them). `icon.png` in the project root is a 512 px copy and is the project icon, which the web export also uses as the favicon. `android-192.png` is the legacy Android launcher icon, and `android-foreground-432.png` / `android-background-432.png` are the adaptive icon layers, with the robot and crate shrunk to fit inside a round mask. The files in `art/icon/` are left out of the exported game; the Android export reads them directly.
