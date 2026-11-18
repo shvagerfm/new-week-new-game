@@ -1,6 +1,6 @@
 # Crate Push: itch.io page
 
-Copy these fields into the itch.io project page when the game goes up. The icon files are in `art/icon/`: use `icon-1024.png` as the cover source (itch.io wants 630×500, so crop or pad it on the navy background).
+Copy these fields into the itch.io project page when the game goes up. The cover is `store/cover-630x500.png` (630×500, built from the game art by `store/make_cover.py`). The icon files are in `art/icon/`.
 
 ## Title
 
