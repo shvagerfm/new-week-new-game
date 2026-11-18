@@ -512,7 +512,7 @@ func _build_ending() -> void:
 	gap.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	col.add_child(gap)
 	col.add_child(_label("CRATE PUSH", 30, C_TEXT))
-	col.add_child(_label("Made by Dima for New Week, New Game\nArt made with SpriteCook · Sounds made in code\nBuilt with Godot", 22, C_DIM))
+	col.add_child(_label("Made by Dima for New Week, New Game\nArt made with AI image generation · Sounds made in code\nBuilt with Godot", 22, C_DIM))
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 16)
 	row.custom_minimum_size = Vector2(0, 110)
@@ -897,6 +897,9 @@ func _back() -> void:
 
 func _on_title_tapped() -> void:
 	# Seven taps on the title unlock every zone, for testing.
+	# Only in debug builds (editor runs, debug exports): never in a release.
+	if not OS.is_debug_build():
+		return
 	title_taps += 1
 	if title_taps == 7:
 		for z in zones:
