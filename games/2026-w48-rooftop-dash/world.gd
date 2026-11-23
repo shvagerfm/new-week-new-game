@@ -67,6 +67,7 @@ var start_x := 0.0
 var bonus := 0
 var combo := 0            # edge landings in a row; the multiplier is combo + 1
 var parcels_taken := 0
+var best_mult := 1        # the highest multiplier reached this run
 var last_roof := -1
 var ref_y := 0.0          # top of the last roof stood on, for falling out
 
@@ -272,6 +273,7 @@ func _try_land(py: float, ev: Array) -> void:
 			if off <= EDGE_ZONE:
 				combo = mini(combo + 1, MAX_MULT - 1)
 				bonus += EDGE_POINTS * multiplier()
+				best_mult = maxi(best_mult, multiplier())
 				ev.append({"type": "edge", "mult": multiplier(), "x": best.x0, "y": best.y})
 			elif combo > 0:
 				combo = 0
@@ -457,6 +459,6 @@ func clone() -> World:
 			w.ground = s
 	for k in ["next_id", "x", "y", "vy", "grounded", "air_t", "jumped", "buffer_t", "hold_t",
 			"hold_jump", "was_held", "alive", "death", "dead_vx", "started", "t", "start_x",
-			"bonus", "combo", "parcels_taken", "last_roof", "ref_y"]:
+			"bonus", "combo", "best_mult", "parcels_taken", "last_roof", "ref_y"]:
 		w.set(k, get(k))
 	return w

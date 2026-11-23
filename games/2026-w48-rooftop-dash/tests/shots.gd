@@ -50,6 +50,9 @@ func _initialize() -> void:
 		if main.state == main.State.OVER:
 			await _wait(1.0)
 			await _shot("%02d-over" % i)
+			main._to_menu()
+			await _wait(0.5)
+			await _shot("%02d-title-with-best" % (i + 1))
 			break
 	quit()
 

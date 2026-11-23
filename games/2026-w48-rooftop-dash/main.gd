@@ -40,13 +40,19 @@ var meters_label: Label
 var mult_label: Label
 var best_label: Label
 var hint_label: Label
-var title_label: Label
+var screens: Screens
+var results_shown := false
+var final_score := 0        # the run's score and distance at the moment it ended
+var final_m := 0.0
 var rotate_label: Label
 
 
 func _ready() -> void:
 	texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	_load()
+	screens = Screens.new()
+	screens.main = self
+	add_child(screens)
 	_build_hud()
 	music = Music.new()
 	add_child(music)
@@ -63,7 +69,7 @@ func _unhandled_input(event: InputEvent) -> void:
 			if _portrait() or _corner_button(event.position):
 				return
 			touches[event.index] = true
-			_on_press()
+			_on_press(event.position)
 		else:
 			touches.erase(event.index)
 	elif event is InputEventKey and not event.echo:
@@ -75,7 +81,9 @@ func _unhandled_input(event: InputEvent) -> void:
 		elif event.pressed and k == KEY_M:
 			_set_muted(not muted)
 		elif event.pressed and k in [KEY_ESCAPE, KEY_P]:
-			if state == State.RUN:
+			if state == State.OVER and k == KEY_ESCAPE and results_shown:
+				_to_menu()
+			elif state == State.RUN:
 				_pause()
 			elif state == State.PAUSED:
 				_resume()
@@ -118,7 +126,8 @@ func _corner_button(pos: Vector2) -> bool:
 	return false
 
 
-func _on_press() -> void:
+## pos is where a tap landed; keys pass nothing and act like the main button.
+func _on_press(pos := Vector2(-1, -1)) -> void:
 	match state:
 		State.RUN:
 			tapped = true
@@ -127,9 +136,19 @@ func _on_press() -> void:
 		State.PAUSED:
 			_resume()
 		State.OVER:
-			if over_t >= RESTART_DELAY:
+			if over_t < RESTART_DELAY:
+				return
+			if screens.button_at(pos) == "menu":
+				_to_menu()
+			else:
 				_new_world()
 				_start_run()
+
+
+func _to_menu() -> void:
+	sfx.play("click")
+	_new_world()
+	_show_title()
 
 
 # --- Screens ---------------------------------------------------------------
@@ -150,7 +169,7 @@ func _start_run() -> void:
 	_release_all()
 	world.was_held = true  # the press that started the run isn't a jump
 	runs += 1
-	title_label.hide()
+	results_shown = false
 	hint_label.hide()
 	_set_hud_visible(true)
 	sfx.play("click")
@@ -160,15 +179,9 @@ func _start_run() -> void:
 
 func _show_title() -> void:
 	state = State.TITLE
+	results_shown = false
 	_set_hud_visible(false)
-	title_label.show()
-	var s := "Tap, click or press Space to jump.\nHold it to jump higher.\n\nLand right on a roof's edge\nto grow the multiplier."
-	if best_score > 0:
-		s += "\n\nBest  %d   ·   %d m" % [best_score, int(best_m)]
-	s += "\n\nTap to run"
-	hint_label.text = s
-	hint_label.offset_top = 240
-	hint_label.show()
+	hint_label.hide()
 
 
 func _pause() -> void:
@@ -192,11 +205,14 @@ func _game_over() -> void:
 	state = State.OVER
 	over_t = 0.0
 	_release_all()
+	# The body keeps tumbling after death, so freeze the numbers now.
 	var sc := world.score()
+	final_score = sc
+	final_m = world.meters()
 	if sc > best_score:
 		best_score = sc
 		new_best = true
-	best_m = maxf(best_m, world.meters())
+	best_m = maxf(best_m, final_m)
 	_save()
 	var tw := create_tween()
 	tw.tween_property(music, "pitch_scale", 0.5, 0.5)
@@ -204,17 +220,10 @@ func _game_over() -> void:
 	tw.tween_callback(music.stop)
 
 
+## The results panel itself is drawn by screens.gd; the top HUD steps aside.
 func _show_results() -> void:
-	var why := {"fall": "Fell between the roofs", "wall": "Ran into a wall",
-		"ac": "Tripped on an air conditioner", "antenna": "Hit an antenna",
-		"wire": "Caught in a wire"}
-	var s := "%s\n\n%d m   ·   %d parcels\n\nScore  %d\n" % [why.get(world.death, ""),
-		int(world.meters()), world.parcels_taken, world.score()]
-	s += "New best!" if new_best else "Best  %d" % best_score
-	s += "\n\nTap to run again"
-	hint_label.text = s
-	hint_label.offset_top = 80
-	hint_label.show()
+	results_shown = true
+	_set_hud_visible(false)
 
 
 # --- Loop ------------------------------------------------------------------
@@ -263,7 +272,7 @@ func _process(delta: float) -> void:
 		_update_effects(delta)
 	if state == State.OVER:
 		over_t += delta
-		if over_t >= RESTART_DELAY and not hint_label.visible:
+		if over_t >= RESTART_DELAY and not results_shown:
 			_show_results()
 	if state == State.RUN:
 		music.set_speed(world.speed_frac())
@@ -379,7 +388,7 @@ func _draw() -> void:
 		var col: Color = p.col
 		col.a = a
 		draw_rect(Rect2(p.p.snapped(Vector2(4, 4)), Vector2(p.size, p.size)), col)
-	var font := ThemeDB.fallback_font
+	var font := screens.bold
 	for p in popups:
 		var col: Color = p.col
 		col.a = clampf(2.0 - p.life * 2.0, 0.0, 1.0)
@@ -637,7 +646,7 @@ func _draw_best_flag(vp: Vector2, c: Vector2) -> void:
 	draw_rect(Rect2(fx, fy - 96, 4, 96), Art.WIRE)
 	var wave := 4.0 if int(time * 4.0) % 2 == 0 else 0.0
 	draw_rect(Rect2(fx + 4, fy - 96, 52, 28 + wave), Art.GOLD)
-	draw_string(ThemeDB.fallback_font, Vector2(fx + 8, fy - 74), "BEST", HORIZONTAL_ALIGNMENT_LEFT, -1, 20, Color("0a0c1c"))
+	draw_string(screens.bold, Vector2(fx + 8, fy - 74), "BEST", HORIZONTAL_ALIGNMENT_LEFT, -1, 20, Color("0a0c1c"))
 
 
 func _draw_speed_lines(vp: Vector2) -> void:
@@ -685,28 +694,23 @@ func _draw_buttons(vp: Vector2) -> void:
 func _build_hud() -> void:
 	var layer := CanvasLayer.new()
 	add_child(layer)
-	score_label = _label(layer, 64, Art.TEXT)
+	score_label = _label(layer, 80, Art.TEXT)
 	score_label.set_anchors_and_offsets_preset(Control.PRESET_TOP_WIDE)
 	score_label.offset_top = 24
 	score_label.offset_bottom = 104
-	meters_label = _label(layer, 32, Color("aab4e8"))
+	meters_label = _label(layer, 36, Color("aab4e8"))
 	meters_label.set_anchors_and_offsets_preset(Control.PRESET_TOP_WIDE)
 	meters_label.offset_top = 100
 	meters_label.offset_bottom = 136
-	mult_label = _label(layer, 40, Art.ORANGE)
+	mult_label = _label(layer, 48, Art.ORANGE)
 	mult_label.set_anchors_and_offsets_preset(Control.PRESET_TOP_WIDE)
 	mult_label.offset_top = 136
 	mult_label.offset_bottom = 186
-	best_label = _label(layer, 30, Art.GOLD)
+	best_label = _label(layer, 34, Art.GOLD)
 	best_label.set_anchors_and_offsets_preset(Control.PRESET_TOP_WIDE)
 	best_label.offset_top = 186
 	best_label.offset_bottom = 222
-	title_label = _label(layer, 84, Art.ORANGE)
-	title_label.text = "ROOFTOP\nDASH"
-	title_label.set_anchors_and_offsets_preset(Control.PRESET_TOP_WIDE)
-	title_label.offset_top = 60
-	title_label.offset_bottom = 260
-	hint_label = _label(layer, 32, Art.TEXT)
+	hint_label = _label(layer, 40, Art.TEXT)
 	hint_label.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	hint_label.offset_top = 240
 	hint_label.offset_left = 24
@@ -722,6 +726,7 @@ func _build_hud() -> void:
 func _label(parent: Node, size: int, col: Color) -> Label:
 	var l := Label.new()
 	var ls := LabelSettings.new()
+	ls.font = screens.bold
 	ls.font_size = size
 	ls.font_color = col
 	ls.outline_size = maxi(size / 5, 6)
@@ -740,7 +745,7 @@ func _update_rotate_hint() -> void:
 	if rotate_label.visible == up:
 		return
 	rotate_label.visible = up
-	for l in [score_label, meters_label, mult_label, best_label, title_label, hint_label]:
+	for l in [score_label, meters_label, mult_label, best_label, hint_label]:
 		l.modulate.a = 0.0 if up else 1.0
 
 
