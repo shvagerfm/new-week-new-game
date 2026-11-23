@@ -146,6 +146,7 @@ The three menu screens copy the mockups' layout: every position in the code is i
 
 - **Main menu**: Play opens the station map, Continue starts the next unsolved room (or replays the ending once everything is solved; it is greyed out on a new save), Settings opens Sound and Tips.
 - **Station map**: the seven rooms from the Warehouse at the bottom to the Core at the top. Solved zones get a teal check, the current zone an orange frame and Kip's pin, locked zones a padlock and a darker room. The route is lit up to Kip.
+- **Board**: the zone's level-select background sits behind the room too, dimmed, with a dark panel under the room so the tiles stay easy to read.
 - **Level select**: the zone's one-line tagline (`tagline` in `zone.cfg`), a progress bar, and two columns of tiles with the room's stars, a padlock, or the orange frame on the next room.
 
 `tests/menu_shots.gd` saves the menus in the mockups' states, for comparing side by side:
