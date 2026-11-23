@@ -1,4 +1,5 @@
-"""Draws the placeholder sprite sheets for the facades and the window scenes.
+"""Draws the placeholder sprite sheets: facades, window scenes, the courier's
+trick poses and the puzzle points.
 
 Each sheet has the exact size and grid of the final art (see the art list),
 so the placeholders double as templates: open one, paint over it, save it
@@ -389,7 +390,216 @@ def props():
     s.save("window-props")
 
 
-SHEETS = {"facade": facade, "window-rooms": rooms, "window-scenes": scenes, "window-props": props}
+# --- courier-tricks.png -----------------------------------------------------------
+# 512x64: eight 64x64 poses, feet at y 58. Placeholders reuse courier.png
+# frames: hanging 0-1, parachute 2-3, squat 4, launch 5, riding the cradle 6-7.
+
+def tricks():
+    src = Image.open(os.path.join(OUT, "courier.png")).convert("RGBA")
+    s = Sheet(512, 64)
+    for i, f in enumerate([6, 7, 6, 7, 8, 6, 0, 1]):
+        s.img.paste(src.crop((f * 64, 0, f * 64 + 64, 64)), (i * 64, 0))
+    s.save("courier-tricks")
+
+
+# --- bat.png --------------------------------------------------------------------------
+# 128x24: four 32x24 frames, claws at (16, 22). Hover 0-1, carrying 2-3.
+
+BAT = [["V..........V", "VV........VV", "VVV.v..v.VVV", ".VVvvvvvvVV.", "..vvrvvrvv..", "...vvvvvv...", "....v..v....", "............"],
+       ["............", "....v..v....", "...vvvvvv...", "..vvrvvrvv..", ".VVvvvvvvVV.", "VVV.vvvv.VVV", "VV........VV", "V..........V"]]
+BAT_PAL = {"V": "#8a66b8", "v": "#4b3368", "r": "#ff4d5e"}
+
+
+def bat():
+    s = Sheet(128, 24)
+    for f in range(4):
+        s.cell(f * 32, 0)
+        rows = BAT[f % 2]
+        for y, row in enumerate(rows):
+            for x, ch in enumerate(row):
+                if ch in BAT_PAL:
+                    c = BAT_PAL[ch] if f < 2 or ch != "r" else "#ffffff"
+                    s.rect(4 + x * 2, 7 + y * 2 - (2 if f >= 2 else 0), 2, 2, c)
+        s.rect(14, 20, 1, 3, INK)   # legs down to the claws
+        s.rect(17, 20, 1, 3, INK)
+    s.save("bat")
+
+
+# --- steam.png -------------------------------------------------------------------------
+# 160x32: pipe (bottom on row 31), then four puffs growing and fading.
+
+def steam():
+    s = Sheet(160, 32)
+    s.cell(0, 0)
+    s.box(11, 12, 10, 20, "#4b5788")
+    s.box(8, 8, 16, 6, "#8796c8")
+    s.box(3, 18, 8, 8, "#8796c8")   # valve wheel
+    s.rect(6, 21, 2, 2, INK)
+    for i in range(4):
+        s.cell(32 + i * 32, 0)
+        r = 4 + i * 3
+        for y in range(32):
+            for x in range(32):
+                d = ((x - 15.5) ** 2 + (y - 15.5) ** 2) ** 0.5
+                if d < r and (i < 2 or (x + y + i) % (i + 1) == 0):
+                    s.px(x, y, "#e8ecff" if d < r - 3 else "#c9d4ff")
+    s.save("steam")
+
+
+# --- laundry.png ------------------------------------------------------------------------
+# 144x48: a 96x48 line with two posts and four things pegged on, then a
+# 48x48 sheet billowing like a parachute, corners at (18, 44) and (46, 44).
+
+def laundry():
+    s = Sheet(144, 48)
+    s.rect(1, 0, 3, 48, "#4b5788")
+    s.rect(92, 0, 3, 48, "#4b5788")
+    for x in range(2, 94):
+        s.px(x, 3 + int(4 * __import__("math").sin(3.14159 * (x - 2) / 92)), "#c9d4ff")
+    for x0, w, h, c in ((8, 16, 20, "#ff8a3d"), (28, 10, 12, "#4a78ff"), (42, 14, 24, "#ffd27a"), (60, 28, 34, "#e8ecff")):
+        top = 4 + int(4 * __import__("math").sin(3.14159 * (x0 + w / 2 - 2) / 92))
+        s.box(x0, top, w, h, c)
+        s.rect(x0 + 2, top - 1, 2, 3, "#b8733a")
+        s.rect(x0 + w - 4, top - 1, 2, 3, "#b8733a")
+    s.cell(96, 0)
+    for y in range(8, 30):
+        half = int(22 * (1 - ((y - 20) / 13) ** 2) ** 0.5) if abs(y - 20) < 13 else 0
+        s.rect(24 - half, y, half * 2, 1, "#e8ecff")
+    s.rect(4, 28, 40, 3, "#4a78ff")
+    for k in range(13):
+        s.px(18 - (k // 2) + 6, 31 + k, "#c9d4ff")
+        s.px(46 - 6 + (k // 2), 31 + k, "#c9d4ff")
+    s.save("laundry")
+
+
+# --- skylight.png -----------------------------------------------------------------------
+# 64x16: left end, middle (repeats), right end, broken. Glass top on row 2.
+
+def skylight():
+    s = Sheet(64, 16)
+    for i in range(4):
+        s.cell(i * 16, 0)
+        s.rect(0, 2, 16, 14, "#2a3360")
+        s.rect(0 if i else 3, 4, 16 if i in (1, 3) else 13, 10, "#7fd0ff")
+        s.rect(0 if i else 3, 4, 16 if i in (1, 3) else 13, 2, "#c9f0ff")
+        if i == 2:
+            s.rect(13, 2, 3, 14, "#2a3360")
+            s.rect(0, 4, 13, 10, "#7fd0ff")
+            s.rect(0, 4, 13, 2, "#c9f0ff")
+        s.rect(0, 2, 16, 1, INK)
+        if i == 1:
+            s.rect(7, 4, 2, 10, "#2a3360")
+        if i == 3:
+            s.clear(3, 4, 10, 10)
+            for x, y in ((3, 4), (5, 4), (11, 4), (12, 5)):
+                s.rect(x, y, 1, 3, "#c9f0ff")
+    s.save("skylight")
+
+
+# --- awning.png -------------------------------------------------------------------------
+# 288x32: three 96x32 frames (rest, squashed, rebound); the bracket is at the
+# right edge, the fabric top runs about row 6.
+
+def awning():
+    s = Sheet(288, 32)
+    for f in range(3):
+        s.cell(f * 96, 0)
+        sag = [0, 6, -4][f]
+        for x in range(4, 96):
+            k = (x - 4) / 92
+            y = 6 + int(sag * __import__("math").sin(3.14159 * k))
+            stripe = "#ff8a3d" if (x // 8) % 2 else "#e8ecff"
+            s.px(x, y - 1, INK)
+            s.rect(x, y, 1, 6, stripe)
+            s.px(x, y + 6, INK)
+        for x in range(4, 92, 8):   # scalloped edge
+            y = 6 + int(sag * __import__("math").sin(3.14159 * (x - 4) / 92))
+            s.rect(x, y + 7, 4, 2, "#ff8a3d" if (x // 8) % 2 else "#e8ecff")
+        s.rect(92, 2, 4, 20, "#4b5788")
+        for i in range(8):
+            s.px(92 - i * 4, 14 + i, "#4b5788")
+        if f == 2:
+            for x in (20, 46, 72):
+                s.rect(x, 0, 1, 3, "#e8ecff")
+    s.save("awning")
+
+
+# --- zipline.png ------------------------------------------------------------------------
+# 64x64: top pole, bottom pole (cable at (8, 4)), handle, handle sliding
+# (wheels at (8, 4), grip at (8, 22)).
+
+def zipline():
+    s = Sheet(64, 64)
+    for i in range(2):
+        s.cell(i * 16, 0)
+        s.box(6, 4, 4, 60, "#4b5788")
+        s.box(4, 2, 8, 5, "#8796c8")
+        s.rect(13 if i == 0 else 2, 6, 1, 1, INK)
+    for i in range(2):
+        s.cell(32 + i * 16, 0)
+        s.box(4, 2, 8, 5, "#8796c8")
+        s.rect(7, 7, 2, 13, "#4b5788")
+        s.box(1, 20, 14, 4, "#ff8a3d")
+        if i:
+            s.rect(1, 3, 2, 2, "#ffd27a")
+            s.rect(13, 1, 2, 2, "#ff8a3d")
+    s.save("zipline")
+
+
+# --- cradle.png ---------------------------------------------------------------------
+# 192x32: cradle, cradle moving (floor on row 24, rope hooks at x 4 and 60),
+# then the roof winch with its arm out to the left.
+
+def cradle():
+    s = Sheet(192, 32)
+    for f in range(2):
+        s.cell(f * 64, 0)
+        s.box(0, 24, 64, 6, "#8796c8")
+        s.box(0, 8, 64, 3, "#ffd27a")
+        for x in (0, 30, 61):
+            s.rect(x, 8, 3, 16, "#4b5788")
+        s.box(44, 16, 8, 8, "#4b5788")   # bucket
+        s.rect(28, 2, 6, 6, "#ff8a3d" if f else "#8f4731")
+        s.rect(3, 0, 2, 8, INK)
+        s.rect(59, 0, 2, 8, INK)
+    s.cell(128, 0)
+    s.box(36, 14, 24, 18, "#4b5788")
+    s.box(4, 10, 40, 5, "#ffd27a")
+    s.box(2, 14, 6, 6, "#8796c8")
+    s.save("cradle")
+
+
+# --- crane.png ---------------------------------------------------------------------
+# 96x32: jib segment (repeats), jib end with trolley, hook (cable at (16, 0),
+# grip at (16, 28)).
+
+def crane():
+    s = Sheet(96, 32)
+    for f in range(2):
+        s.cell(f * 32, 0)
+        s.rect(0, 4, 32, 3, "#ffd27a")
+        s.rect(0, 18, 32, 3, "#ffd27a")
+        for x in range(0, 32, 8):
+            for k in range(14):
+                s.px(x + k // 2, 7 + k, "#d8a838")
+        s.rect(0, 3, 32, 1, INK)
+        s.rect(0, 21, 32, 1, INK)
+        if f == 1:
+            s.clear(24, 0, 8, 32)
+            s.box(8, 22, 16, 6, "#4b5788")
+    s.cell(64, 0)
+    s.box(9, 2, 14, 10, "#ffd27a")
+    s.rect(10, 6, 12, 2, "#ff4d5e")
+    s.rect(15, 12, 3, 8, "#8796c8")
+    s.rect(10, 26, 12, 3, "#8796c8")
+    s.rect(10, 20, 3, 8, "#8796c8")
+    s.rect(19, 18, 3, 4, "#8796c8")
+    s.save("crane")
+
+
+SHEETS = {"facade": facade, "window-rooms": rooms, "window-scenes": scenes, "window-props": props,
+          "courier-tricks": tricks, "bat": bat, "steam": steam, "laundry": laundry,
+          "skylight": skylight, "awning": awning, "zipline": zipline, "cradle": cradle, "crane": crane}
 
 if __name__ == "__main__":
     names = sys.argv[1:] or [n for n in SHEETS if not os.path.exists(os.path.join(OUT, n + ".png"))]

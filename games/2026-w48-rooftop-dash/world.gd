@@ -48,6 +48,32 @@ const LAUNDRY_LINE := 200.0   # the line, above the roof
 const LAUNDRY_LOW := 126.0    # the bottom of the clothes, above the roof
 const STEAM_SLOW := 0.6       # forward speed while rising in the steam
 const PUZZLE_POINTS := 50     # for finding the trick
+## Awning: a building far too tall to jump, with a shop awning on its wall
+## below the roof you are on. Drop onto it and it bounces you up.
+const AWNING_DROP := 110.0    # the awning, below the roof in front of it
+const AWNING_W := 200.0
+## Zipline: a handle at jump height by the roof's edge, on a cable down to a
+## lower roof too far to reach.
+const ZIP_DROP := 240.0
+const ZIP_DROP_MIN := 160.0   # less where the city is already low
+const ZIP_GRIP := 190.0       # the handle, above the roof
+const ZIP_SLOW := 1.3         # it rides faster than you run
+## Cradle: a window-washer's cradle hanging deep in the gap in front of a
+## tall building. Land in it and it lifts you to the top.
+const CRADLE_DROP := 150.0
+const CRADLE_W := 140.0
+const CRADLE_RISE := 300.0    # the tall building, above the roof you left
+## Crane: a hook over a huge gap. It swings you down and up towards a higher
+## roof; tap to let go on the way up, or you swing into the wall.
+const CRANE_HIGH := 200.0     # the hook, above the roof
+const CRANE_UP := 120.0       # the far roof, above the near one
+const CRANE_DIP := 300.0      # how far the swing dips
+const CRANE_KICK := -600.0    # the push you get when you let go
+const CRANE_HANG := 130.0     # feet below the hook while hanging
+const CRANE_WINDOW := 9       # ticks you can let go on and still make it
+## Which puzzle points can show up from which distance (metres).
+const PIECES := {"bat": 230.0, "awning": 330.0, "laundry": 450.0, "zipline": 550.0,
+	"cradle": 700.0, "crane": 850.0}
 
 var rng := RandomNumberGenerator.new()
 ## {id, x0, x1, y, base, crumble, t, vy}. t is -1 until a crumbling roof is touched.
@@ -86,11 +112,14 @@ var parcels_taken := 0
 var best_mult := 1        # the highest multiplier reached this run
 var last_roof := -1
 var ref_y := 0.0          # top of the last roof stood on, for falling out
-## While a bat or the steam carries the courier: {kind, x0, y0, x1, y1, rise_x, arc, slow}.
+## While a puzzle point carries the courier: {kind, x0, y0, x1, y1, rise_x, arc, slow, tap}.
+## With tap, a press lets go (the crane).
 var carry := {}
 var carries := 0          # puzzle points solved this run
 var next_piece_m := 230.0 # no puzzle point before this distance
 var no_grab: Array = []   # tests turn kinds off here to prove the tricks are needed
+var pieces_seen: Array = []  # puzzle kinds met so far this run, so new ones come first
+var last_piece := ""
 
 
 func _init(seed_value := 0, fresh := true) -> void:
@@ -213,7 +242,11 @@ func step(held: bool, tapped := false) -> Array:
 
 	if not carry.is_empty():
 		buffer_t = 99.0
-		_step_carry(ev)
+		if pressed and carry.get("tap", false):
+			_release(ev, carry_vy() + CRANE_KICK)
+			ev.append({"type": "jump"})
+		else:
+			_step_carry(ev)
 		_collect(ev)
 		_ensure_generated()
 		return ev
@@ -271,13 +304,38 @@ func _step_carry(ev: Array) -> void:
 	vy = (ny - y) / DT
 	y = ny
 	if x >= carry.x1:
-		ev.append({"type": "release", "kind": carry.kind})
-		carry = {}
-		vy = 0.0
-		air_t = 0.0
-		jumped = true
-		hold_jump = false
-		ref_y = maxf(ref_y, y)
+		_release(ev, 0.0)
+
+
+## Lets go of the bat, the handle, the hook... and flies on from here.
+func _release(ev: Array, new_vy: float) -> void:
+	ev.append({"type": "release", "kind": carry.kind})
+	carry = {}
+	vy = new_vy
+	air_t = 0.0
+	jumped = true
+	hold_jump = false
+	ref_y = maxf(ref_y, y)
+
+
+## The carry's vertical speed this tick, for letting go mid-swing.
+func carry_vy() -> float:
+	return vy
+
+
+func _start_carry(o: Dictionary, ev: Array) -> void:
+	o.used = true
+	carries += 1
+	var pts := PUZZLE_POINTS * multiplier()
+	bonus += pts
+	if o.has("snap_y"):
+		y = o.snap_y   # hanging from the hook, whatever height you caught it at
+	carry = {"kind": o.kind, "x0": x, "y0": y, "x1": o.tx, "y1": o.ty,
+		"rise_x": maxf(o.rise_x, x + 30.0), "arc": o.arc, "slow": o.slow, "tap": o.get("tap", false)}
+	grounded = false
+	ground = {}
+	hold_jump = false
+	ev.append({"type": "grab", "kind": o.kind, "points": pts})
 
 
 func _support_at(s: Dictionary) -> bool:
@@ -289,6 +347,13 @@ func _top_of(s: Dictionary) -> float:
 
 
 func _try_land(py: float, ev: Array) -> void:
+	# Awnings and cradles catch you from above and start their ride.
+	for o in obstacles:
+		if o.get("pad", false) and not o.used and not o.kind in no_grab \
+				and x > o.x0 and x < o.x1 and py <= o.y0 + 0.5 and y >= o.y0:
+			y = o.y0
+			_start_carry(o, ev)
+			return
 	var best := {}
 	var best_top := INF
 	for s in roofs + obstacles:
@@ -336,15 +401,10 @@ func _collide(px: float, ev: Array) -> void:
 			return
 	for o in obstacles:
 		if o.get("grab", false):
+			if o.get("pad", false):
+				continue
 			if not o.kind in no_grab and not grounded and not o.used and body.intersects(Rect2(o.x0, o.y0, o.x1 - o.x0, o.y1 - o.y0)):
-				o.used = true
-				carries += 1
-				var pts := PUZZLE_POINTS * multiplier()
-				bonus += pts
-				carry = {"kind": o.kind, "x0": x, "y0": y, "x1": o.tx, "y1": o.ty,
-					"rise_x": o.rise_x, "arc": o.arc, "slow": o.slow}
-				hold_jump = false
-				ev.append({"type": "grab", "kind": o.kind, "points": pts})
+				_start_carry(o, ev)
 				return
 			continue
 		if o.kind == "skylight":
@@ -447,13 +507,17 @@ func _gen_roof() -> void:
 	dy = snappedf(dy, 8.0)
 
 	if not prev.crumble and m > next_piece_m and rng.randf() < 0.35:
-		var steam := m > 450.0 and rng.randf() < 0.5
-		if steam and prev.base - WALL_RISE < -520.0:
-			steam = false
-		if steam:
-			_gen_steam(prev, v)
-		else:
-			_gen_bat(prev, v)
+		var kind := _pick_piece(m, prev.base)
+		match kind:
+			"bat": _gen_bat(prev, v)
+			"laundry": _gen_steam(prev, v)
+			"awning": _gen_awning(prev, v)
+			"zipline": _gen_zipline(prev, v)
+			"cradle": _gen_cradle(prev, v)
+			"crane": _gen_crane(prev, v)
+		last_piece = kind
+		if not kind in pieces_seen:
+			pieces_seen.append(kind)
 		next_piece_m = m + rng.randf_range(350.0, 600.0)
 		return
 
@@ -576,6 +640,128 @@ func _gen_steam(prev: Dictionary, v: float) -> void:
 		"vent": a.x1 - 40.0})
 
 
+## The next puzzle point: one not met yet if any has just unlocked, else
+## any but the last one. Some need room above or below to fit the city.
+func _pick_piece(m: float, base: float) -> String:
+	var ok: Array = []
+	for k in PIECES:
+		if m < PIECES[k]:
+			continue
+		var rise: float = {"laundry": WALL_RISE, "awning": WALL_RISE, "cradle": CRADLE_RISE,
+			"crane": CRANE_UP}.get(k, 0.0)
+		var drop: float = {"zipline": ZIP_DROP_MIN, "bat": 40.0}.get(k, 0.0)
+		if base - rise < -520.0 or base + drop > 520.0:
+			continue
+		ok.append(k)
+	if ok.is_empty():
+		return "bat"
+	var fresh := ok.filter(func(k): return not k in pieces_seen)
+	if not fresh.is_empty():
+		return fresh[0]
+	if ok.size() > 1:
+		ok.erase(last_piece)
+	return ok[rng.randi() % ok.size()]
+
+
+## A roof ending at a wall far too tall to jump; an awning sticks out of the
+## wall below the roof's level. Drop off the edge onto it and it bounces you up.
+func _gen_awning(prev: Dictionary, v: float) -> void:
+	var x0: float = prev.x1 + reach(v, 0.0, false) * 0.5
+	var a := _add_roof(x0, x0 + v * 2.0, prev.base, false)
+	var bx0: float = a.x1 + AWNING_W + 60.0
+	var b := _add_roof(bx0, bx0 + v * 2.2, a.base - WALL_RISE, false)
+	obstacles.append({"kind": "awning", "grab": true, "pad": true, "used": false, "roof": b.id,
+		"x0": b.x0 - AWNING_W, "x1": b.x0, "y0": a.y + AWNING_DROP, "y1": a.y + AWNING_DROP + 24.0,
+		"tx": b.x0 + 120.0, "ty": b.y - 30.0, "rise_x": b.x0 - 12.0, "arc": 0.0, "slow": 0.35})
+	parcels.append({"x": b.x0 + 40.0, "y": b.y - 80.0, "taken": false})
+
+
+## A handle at jump height by the edge of a roof, on a cable down to a much
+## lower roof too far away to jump to.
+func _gen_zipline(prev: Dictionary, v: float) -> void:
+	var x0: float = prev.x1 + reach(v, 0.0, false) * 0.5
+	var a := _add_roof(x0, x0 + v * 2.2, prev.base, false)
+	var drop := minf(ZIP_DROP, 520.0 - a.base)
+	var far: float = a.x1 + reach(v, drop, true) * 1.35 + 80.0
+	var land := _add_roof(far, far + v * 2.4, a.base + drop, false)
+	var hx: float = a.x1 - v * 0.15
+	var hy: float = a.y - ZIP_GRIP
+	var tx: float = land.x0 + 170.0
+	var ty: float = land.y - 24.0
+	obstacles.append({"kind": "zipline", "grab": true, "used": false, "roof": a.id,
+		"x0": hx - 30.0, "x1": hx + 30.0, "y0": hy - 28.0, "y1": hy + 28.0,
+		"tx": tx, "ty": ty, "rise_x": tx, "arc": -30.0, "slow": ZIP_SLOW,
+		# The cable, from the top of a pole on this roof to one on the far roof.
+		"ax": hx - 60.0, "ay": hy - 56.0, "bx": tx + 80.0, "by": ty - 150.0, "a_roof": a.y, "b_roof": land.y})
+	for k in [0.3, 0.5, 0.7]:
+		parcels.append({"x": lerpf(hx, tx, k), "y": lerpf(hy + 60.0, ty - 60.0, k), "taken": false})
+
+
+## A tall building with a window-washer's cradle hanging deep in the gap in
+## front of it. Hop down into the cradle and it winches you up to the top.
+func _gen_cradle(prev: Dictionary, v: float) -> void:
+	var x0: float = prev.x1 + reach(v, 0.0, false) * 0.5
+	var a := _add_roof(x0, x0 + v * 2.0, prev.base, false)
+	var bx0: float = a.x1 + 220.0 + CRADLE_W
+	var b := _add_roof(bx0, bx0 + v * 2.2, a.base - CRADLE_RISE, false)
+	obstacles.append({"kind": "cradle", "grab": true, "pad": true, "used": false, "roof": b.id,
+		"x0": b.x0 - CRADLE_W - 10.0, "x1": b.x0 - 10.0, "y0": a.y + CRADLE_DROP, "y1": a.y + CRADLE_DROP + 40.0,
+		"tx": b.x0 + 120.0, "ty": b.y - 30.0, "rise_x": b.x0 - 14.0, "arc": 0.0, "slow": 0.08, "top": b.y})
+
+
+## A crane hook over a gap far too wide, with the far roof higher up. The
+## hook swings you down and up; let go on the way up to reach the roof.
+func _gen_crane(prev: Dictionary, v: float) -> void:
+	var x0: float = prev.x1 + reach(v, 0.0, false) * 0.5
+	var a := _add_roof(x0, x0 + v * 2.2, prev.base, false)
+	var hx: float = a.x1 + v * 0.2
+	var hy: float = a.y - CRANE_HIGH
+	var feet := hy + CRANE_HANG
+	var fy: float = a.y - CRANE_UP
+	# The widest gap that still leaves a fair moment to let go.
+	var span := v * 2.0
+	while span > v * 1.2 and crane_window(hx, feet, hx + span, fy, v) < CRANE_WINDOW:
+		span -= 16.0
+	var far: float = hx + span
+	var f := _add_roof(far, far + v * 2.4, a.base - CRANE_UP, false)
+	obstacles.append({"kind": "crane", "grab": true, "tap": true, "used": false, "roof": a.id,
+		"x0": hx - 35.0, "x1": hx + 35.0, "y0": hy - 28.0, "y1": hy + 28.0, "snap_y": feet,
+		"tx": f.x0 - 40.0, "ty": f.y + 60.0, "rise_x": f.x0 - 40.0, "arc": -CRANE_DIP, "slow": 1.0,
+		"pivot_x": (hx + f.x0) * 0.5, "pivot_y": a.y - 440.0})
+
+
+## How many ticks of the crane's swing you can let go on and still land on
+## the far roof (top fy, front edge fx), swinging from (x0, y0) at speed v.
+static func crane_window(x0: float, y0: float, fx: float, fy: float, v: float) -> int:
+	var x1 := fx - 40.0
+	var y1 := fy + 60.0
+	var ok := 0
+	var n := int((x1 - x0) / (v * DT))
+	for k in n:
+		# Ride k ticks, then let go.
+		var px := x0 + v * DT * (k + 1)
+		var py := _crane_y(px, x0, y0, x1, y1)
+		var vv := (py - _crane_y(px - v * DT, x0, y0, x1, y1)) / DT + CRANE_KICK
+		for i in 200:
+			var oy := py
+			vv = minf(vv + GRAVITY * DT, MAX_FALL)
+			px += v * DT
+			py += vv * DT
+			if vv >= 0.0 and oy <= fy + 0.5 and py >= fy and px + HALF_W > fx + 2.0:
+				ok += 1
+				break
+			if px + HALF_W > fx and py > fy + 8.0:
+				break
+			if py > fy + 600.0:
+				break
+	return ok
+
+
+static func _crane_y(px: float, x0: float, y0: float, x1: float, y1: float) -> float:
+	var k := clampf((px - x0) / (x1 - x0), 0.0, 1.0)
+	return lerpf(y0, y1, smoothstep(0.0, 1.0, k)) + CRANE_DIP * sin(PI * k)
+
+
 # --- Copies for the test bot ----------------------------------------------
 
 func clone() -> World:
@@ -594,6 +780,8 @@ func clone() -> World:
 	for k in ["next_id", "x", "y", "vy", "grounded", "air_t", "jumped", "buffer_t", "hold_t",
 			"hold_jump", "was_held", "alive", "death", "dead_vx", "started", "t", "start_x",
 			"bonus", "combo", "best_mult", "parcels_taken", "last_roof", "ref_y",
-			"carry", "carries", "next_piece_m", "no_grab"]:
+			"carry", "carries", "next_piece_m", "no_grab", "pieces_seen", "last_piece"]:
 		w.set(k, get(k))
+	w.carry = carry.duplicate()
+	w.pieces_seen = pieces_seen.duplicate()
 	return w

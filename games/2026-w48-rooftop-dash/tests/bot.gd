@@ -25,8 +25,12 @@ func _initialize() -> void:
 		if not ok:
 			failed += 1
 		var st: Dictionary = ap.stats
-		print("seed %3d  %s  reached %5d m  (%d tries)  ac %d  antennas %d  skylights %d  wires %d  crumbling %d  bat rides %d/%d  steam lifts %d/%d" % [
+		var tricks := ""
+		for k in World.PIECES:
+			if st.has(k):
+				tricks += "  %s %d/%d" % [k, ap.rides.get(k, 0), st[k]]
+		print("seed %3d  %s  reached %5d m  (%d tries)  ac %d  antennas %d  skylights %d  wires %d  crumbling %d %s" % [
 			s, "ok  " if ok else "FAIL", int(ap.best), ap.tried, st.ac, st.antenna, st.skylight,
-			st.wire, st.crumble, ap.rides.bat, st.bat, ap.rides.laundry, st.laundry])
+			st.wire, st.crumble, tricks])
 	print("%d seeds failed, %.1f s" % [failed, (Time.get_ticks_msec() - t0) / 1000.0])
 	quit(1 if failed > 0 else 0)

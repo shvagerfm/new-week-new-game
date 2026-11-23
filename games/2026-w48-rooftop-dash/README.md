@@ -34,9 +34,13 @@ The game also pauses when the window or tab loses focus.
   - Skylight (from 150 m): glass in the roof. Running onto it breaks it, so jump over.
   - Wire across a gap: a tap passes under, a held jump hits it.
   - Crumbling roof (cracked, rust-tinted): it gives way a quarter second after you land, so jump off quickly.
-- **Puzzle points** (secret tricks, 50 × multiplier each, from 230 m, one every 350 to 600 m)
-  - Bat ride: two wide gaps you can just clear, then a third one step wider than any jump, with a bat hovering above its edge. Jump into the bat and the courier grabs it and is carried across.
+- **Puzzle points** (secret tricks, 50 × multiplier each, one every 350 to 600 m from 230 m). Each new kind shows up soon after it unlocks; after that they mix, never the same one twice in a row.
+  - Bat ride (from 230 m): two wide gaps you can just clear, then a third one step wider than any jump, with a bat hovering above its edge. Jump into the bat and the courier grabs it and is carried across.
+  - Awning bounce (from 330 m): a building far too tall to jump, with a striped awning on its wall below your roof. Jumping hits the wall; drop off the edge onto the awning and it bounces you to the top.
   - Steam lift (from 450 m): a wall far too tall to jump, with steam rising from a pipe at its foot and laundry hanging before it. Jump into the laundry and the sheet catches the steam like a parachute and lifts you onto the wall.
+  - Zipline (from 550 m): a handle at jump height by the roof's edge, on a cable down to a much lower roof too far to reach. Jump into the handle and ride down. Only where the city has room below.
+  - Window-washer's cradle (from 700 m): a tall building with a cradle hanging in the gap in front of it, below your roof. Hop down into it and it winches you up.
+  - Crane hook (from 850 m): a hook over a huge gap, the far roof higher up. Grab it and it swings you down and up; tap to let go on the way up (a window of about 0.2 s). Hold on too long and you swing into the wall. The generator checks every crane has a fair moment to let go (`World.crane_window`).
 - **Score** is metres plus bonus points. The best score and the best distance are saved. A flag marks the best distance on the roofs, and a line counts down the last 100 m to it.
 
 ## Windows
@@ -78,6 +82,8 @@ Every sound is synthesized by `sfx/make_sfx.py`, so a recipe change is one scrip
 | `sprites/window-rooms.png` | 32×40 rooms behind the glass: kitchen, bedroom, living room, stairs, dark |
 | `sprites/window-scenes.png` | Six window scenes, one per row, six 32×40 frames each: cat and pot, disco dancer, granny with binoculars, couple and pillow, grandpa lifting, dog |
 | `sprites/window-props.png` | 16×16 bits the scenes throw out: pot, pillow, feather, disco light, WOOF, glint |
+| `sprites/courier-tricks.png` | 8 more courier poses, 64×64, feet at y = 58: hanging (hands at 32, 6), parachute, squat, launch, riding the cradle |
+| `sprites/bat.png`, `steam.png`, `laundry.png`, `skylight.png`, `awning.png`, `zipline.png`, `cradle.png`, `crane.png` | The puzzle points and skylights. Sizes, frames and anchor points are in the art list; all are placeholders for now |
 | `art.gd` | Palette for the HUD and effects, plus the old string sprites used by `art/make_icon.py` |
 | `sfx.gd` | Sound effect pool |
 | `screens.gd` | Title and Game Over screens, drawn over the running city; says which button a tap hit |

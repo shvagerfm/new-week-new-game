@@ -308,13 +308,22 @@ func _on_event(e: Dictionary) -> void:
 			if impact > 1000.0:
 				shake = maxf(shake, (impact - 900.0) / 90.0)
 		"grab":
-			if e.kind == "bat":
-				sfx.play("squeak", 0.05)
-				_popup(Vector2(world.x, world.y - 170.0), "BAT RIDE!  +%d" % e.points, Art.GOLD)
-			else:
-				sfx.play("cloth")
-				_popup(Vector2(world.x, world.y - 170.0), "STEAM LIFT!  +%d" % e.points, Art.GOLD)
+			grab_t = world.t
+			var names := {"bat": "BAT RIDE!", "laundry": "STEAM LIFT!", "awning": "BOING!",
+				"zipline": "ZIPLINE!", "cradle": "GOING UP!", "crane": "CRANE!  TAP TO LET GO"}
+			_popup(Vector2(world.x, world.y - 170.0), "%s  +%d" % [names.get(e.kind, "NICE!"), e.points], Art.GOLD)
+			match e.kind:
+				"bat":
+					sfx.play("squeak", 0.05)
+				"laundry":
+					sfx.play("cloth")
+				"awning":
+					sfx.play("jump", 0.0, 0.0, 0.7)
+				_:
+					sfx.play("clang", 0.05, -6.0)
 			sfx.play("best", 0.0, -8.0)
+		"release":
+			release_t = world.t
 		"edge":
 			sfx.play("edge", 0.0, 0.0, 1.0 + 0.12 * (e.mult - 2))
 			_popup(Vector2(world.x, world.y - 140.0), "EDGE!  x%d" % e.mult, Art.ORANGE)
@@ -341,6 +350,7 @@ func _on_event(e: Dictionary) -> void:
 			elif e.reason == "skylight":
 				sfx.play("glass")
 				sink_y = world.y
+				sink_x = world.x
 				_shards(Vector2(world.x, world.y), 16)
 			else:
 				# Each obstacle sounds like what it is.
@@ -362,7 +372,7 @@ func _shards(at: Vector2, n: int) -> void:
 	for i in n:
 		particles.append({"p": at + Vector2(randf_range(-30, 30), -4),
 			"v": Vector2(randf_range(-140, 140), randf_range(-320, -80)),
-			"life": 0.0, "max": randf_range(0.4, 0.8), "col": SKY_GLASS.lightened(0.3), "size": 6.0})
+			"life": 0.0, "max": randf_range(0.4, 0.8), "col": Color("c9f0ff"), "size": 6.0})
 
 
 func _sparks(at: Vector2, n: int) -> void:
@@ -775,10 +785,42 @@ func _draw_scene_fx(list: Array) -> void:
 				_prop(Vector2i(3 + e.k, 1), e.at + Vector2(0, -6 * e.k), S * 2.0)
 
 
-## Placeholder art for the newer obstacles, until their sprites are drawn.
-const SKY_GLASS := Color("7fd0ff")
-const SKY_FRAME := Color("2a3360")
-const LAUNDRY := [Color("ff8a3d"), Color("e8ecff"), Color("4a78ff"), Color("ffd27a"), Color("ff4d5e")]
+# --- Puzzle points and skylights -------------------------------------------
+## Each comes from its own sheet in sprites/, drawn at 2x. The art list says
+## what each frame is and where its anchor points are.
+const TRICKS: Texture2D = preload("res://sprites/courier-tricks.png")
+const BAT_TEX: Texture2D = preload("res://sprites/bat.png")
+const STEAM_TEX: Texture2D = preload("res://sprites/steam.png")
+const LAUNDRY_TEX: Texture2D = preload("res://sprites/laundry.png")
+const SKYLIGHT_TEX: Texture2D = preload("res://sprites/skylight.png")
+const AWNING_TEX: Texture2D = preload("res://sprites/awning.png")
+const ZIP_TEX: Texture2D = preload("res://sprites/zipline.png")
+const CRADLE_TEX: Texture2D = preload("res://sprites/cradle.png")
+const CRANE_TEX: Texture2D = preload("res://sprites/crane.png")
+## courier-tricks.png frames.
+const T_HANG := 0
+const T_CHUTE := 2
+const T_SQUAT := 4
+const T_LAUNCH := 5
+const T_CRADLE := 6
+const ROPE := Color("c9d4ff")
+const ROPE_DARK := Color("1d2347")
+
+var grab_t := -9.0            # world time of the last grab, for squash frames
+var release_t := -9.0
+
+
+## Draws a region of a sheet at 2x with its top-left at pos.
+func _sheet(tex: Texture2D, src: Rect2, pos: Vector2, mod := Color.WHITE) -> void:
+	draw_texture_rect_region(tex, Rect2((pos / S).round() * S, src.size * S), src, mod)
+
+
+## A rope or cable from a to b, one art pixel thick.
+func _rope(a: Vector2, b: Vector2, col := ROPE) -> void:
+	var n := maxi(int(a.distance_to(b) / S), 1)
+	for i in n + 1:
+		var q := ((a.lerp(b, float(i) / n)) / S).round() * S
+		draw_rect(Rect2(q, Vector2(S, S)), col)
 
 
 func _draw_obstacle(o: Dictionary) -> void:
@@ -789,11 +831,24 @@ func _draw_obstacle(o: Dictionary) -> void:
 		"bat":
 			if not o.used:
 				var bob := roundf(sin(time * 5.0 + o.x0) * 3.0) * 2.0
-				_draw_bat(Vector2((o.x0 + o.x1) * 0.5, (o.y0 + o.y1) * 0.5 + bob), 8.0)
+				var at := Vector2((o.x0 + o.x1) * 0.5, (o.y0 + o.y1) * 0.5 + bob)
+				_sheet(BAT_TEX, Rect2(32 * (int(time * 8.0) % 2), 0, 32, 24), at - Vector2(16, 12) * S)
 			return
 		"laundry":
 			_draw_steam(o)
 			_draw_laundry(o)
+			return
+		"awning":
+			_draw_awning(o)
+			return
+		"zipline":
+			_draw_zipline(o)
+			return
+		"cradle":
+			_draw_cradle(o)
+			return
+		"crane":
+			_draw_crane(o)
 			return
 	if o.kind == "ac":
 		# Cell (0, 64); the unit itself spans x 12-51, y 28-59 in the cell.
@@ -824,82 +879,159 @@ func _draw_obstacle(o: Dictionary) -> void:
 		draw_rect(Rect2(cx - 10, y0 - 6, 20, 20), Color(1, 0.55, 0.2, 0.3))
 
 
-## A glass roof light, raised a little above the roof, with a moving glint.
+## A glass roof light: left end, middle tiles, right end, 32 px tall, with
+## the glass 4 px down. A glint runs across it.
 func _draw_skylight(o: Dictionary) -> void:
-	var y: float = o.y1
-	var x0: float = o.x0
-	var x1: float = o.x1
-	# A low glass roof, 28 px tall, lit from inside so it reads from afar.
-	draw_rect(Rect2(x0 - 8, y - 6, x1 - x0 + 16, 14), Color(1, 0.75, 0.4, 0.35))
-	draw_rect(Rect2(x0 - 4, y - 32, x1 - x0 + 8, 36), SKY_FRAME)
-	draw_rect(Rect2(x0 + 4, y - 28, x1 - x0 - 8, 24), SKY_GLASS.darkened(0.15))
-	draw_rect(Rect2(x0 + 4, y - 28, x1 - x0 - 8, 6), SKY_GLASS.lightened(0.3))
-	for k in range(int(x0) + 28, int(x1) - 12, 28):  # mullions
-		draw_rect(Rect2(k, y - 28, 4, 24), SKY_FRAME)
-	var g := fposmod(time * 160.0 + x0, (x1 - x0) + 160.0) - 80.0
-	if g > 4.0 and g < x1 - x0 - 20:
-		draw_rect(Rect2(x0 + snappedf(g, 4), y - 24, 8, 16), Color(1, 1, 1, 0.75))
-		draw_rect(Rect2(x0 + snappedf(g, 4) + 12, y - 24, 4, 16), Color(1, 1, 1, 0.5))
+	var y: float = o.y1 - 28.0
+	var x0: float = o.x0 - 8.0
+	var x1: float = o.x1 + 8.0
+	draw_rect(Rect2(x0 - 4, o.y1 - 6, x1 - x0 + 8, 14), Color(1, 0.75, 0.4, 0.35))
+	var broken: bool = not world.alive and world.death == "skylight" and world.x > o.x0 and world.x < o.x1
+	var x := x0
+	while x < x1:
+		var cell := 1
+		if x == x0:
+			cell = 0
+		elif x + 32.0 >= x1:
+			cell = 2
+		if broken and absf(x + 16.0 - sink_x) < 16.0:
+			cell = 3
+		var w := minf(32.0, x1 - x)
+		_sheet(SKYLIGHT_TEX, Rect2(cell * 16, 0, w / S, 16), Vector2(x, y))
+		x += 32.0
+	var g := fposmod(time * 160.0 + o.x0, (x1 - x0) + 160.0) - 80.0
+	if g > 8.0 and g < x1 - x0 - 24:
+		draw_rect(Rect2(x0 + snappedf(g, 4), y + 8, 8, 16), Color(1, 1, 1, 0.6))
+		draw_rect(Rect2(x0 + snappedf(g, 4) + 12, y + 8, 4, 16), Color(1, 1, 1, 0.4))
 
 
-## A line between two poles with clothes pegged on, swaying a little.
+var sink_x := 0.0
+
+
+## The washing line (laundry.png, left part) centred over the grab zone, its
+## line at the top; the posts are carried on down to the roof.
 func _draw_laundry(o: Dictionary) -> void:
-	var a := Vector2(o.x0 - 16, o.y0)
-	var b := Vector2(o.x1 + 16, o.y0)
-	for p in [a, b]:
-		draw_rect(Rect2(p.x - 4, p.y - 8, 8, World.LAUNDRY_LINE + 8), WIRE_DARK)
-		draw_rect(Rect2(p.x - 4, p.y - 8, 2, World.LAUNDRY_LINE + 8), WIRE_EDGE.darkened(0.3))
-	var n := int((b.x - a.x) / S)
-	for i in n + 1:
-		var t := float(i) / n
-		var q := Vector2(lerpf(a.x, b.x, t), a.y + 12.0 * sin(PI * t))
-		draw_rect(Rect2((q / S).round() * S, Vector2(S, S)), WIRE_EDGE)
-	var x: float = o.x0 + 4.0
-	var i := 0
-	while x < o.x1 - 20.0:
-		if o.used and i == 1:  # the sheet the courier took
-			x += 40.0
-			i += 1
-			continue
-		var h := Art.hash3(int(o.x0), i)
-		var w := 28.0 + float(h % 3) * 12.0
-		w = minf(w, o.x1 - x)
-		var t := (x + w * 0.5 - a.x) / (b.x - a.x)
-		var top := a.y + 12.0 * sin(PI * t)
-		var length: float = o.y1 - top - float(h % 4) * 6.0
-		var sway := roundf(sin(time * 2.5 + i) * 1.5) * 2.0
-		var col: Color = LAUNDRY[h % LAUNDRY.size()]
-		var r := Rect2(snappedf(x + sway, S), snappedf(top, S), snappedf(w, S), snappedf(length, S))
-		draw_rect(r.grow(2), INK_DARK)
-		draw_rect(r, col)
-		draw_rect(Rect2(r.position, Vector2(r.size.x, 4)), col.lightened(0.3))
-		if h % 2 == 0:  # stripes
-			draw_rect(Rect2(r.position + Vector2(0, r.size.y * 0.5), Vector2(r.size.x, 6)), col.darkened(0.3))
-		draw_rect(Rect2(r.position + Vector2(4, -6), Vector2(4, 10)), Art.TEXT)  # pegs
-		draw_rect(Rect2(r.end.x - 8, r.position.y - 6, 4, 10), Art.TEXT)
-		x += w + 10.0
-		i += 1
+	var cx: float = (o.x0 + o.x1) * 0.5
+	var pos := Vector2(cx - 48.0 * S, o.y0 - 3.0 * S)
+	var floor_y: float = o.y0 + World.LAUNDRY_LINE
+	for px in [1.0, 92.0]:
+		draw_rect(Rect2(pos.x + px * S, pos.y + 48.0 * S, 3.0 * S, floor_y - pos.y - 48.0 * S), ROPE_DARK)
+	var sway := roundf(sin(time * 2.5) * 1.0) * S
+	if o.used:
+		# The sheet is gone: it is the courier's parachute now.
+		_sheet(LAUNDRY_TEX, Rect2(0, 0, 58, 48), pos + Vector2(sway, 0))
+		_sheet(LAUNDRY_TEX, Rect2(88, 0, 8, 48), pos + Vector2(88.0 * S, 0))
+	else:
+		_sheet(LAUNDRY_TEX, Rect2(0, 0, 96, 48), pos + Vector2(sway, 0))
 
 
 const INK_DARK := Color("0a0c1c")
 
 
-## A vent at the foot of the wall, puffing steam up its whole height, so the
-## way up is there to be seen before the player knows how to use it.
+## The vent at the foot of the wall (steam.png cell 0), puffing steam up the
+## whole height of the wall with the puff frames, so the way up can be seen
+## before the player knows how to use it.
 func _draw_steam(o: Dictionary) -> void:
 	var vx: float = o.vent
 	var floor_y: float = o.y0 + World.LAUNDRY_LINE
-	draw_rect(Rect2(vx - 14, floor_y - 28, 28, 28), WIRE_DARK)
-	draw_rect(Rect2(vx - 18, floor_y - 32, 36, 8), WIRE_EDGE.darkened(0.2))
+	_sheet(STEAM_TEX, Rect2(0, 0, 32, 32), Vector2(vx - 16.0 * S, floor_y - 32.0 * S))
 	var height := World.WALL_RISE + 160.0
 	for i in 14:
 		var k := fposmod(time * 0.55 + i / 14.0, 1.0)
-		var h := Art.hash3(i, int(vx))
 		var px := vx + sin(k * 9.0 + i) * 14.0 - k * 50.0
-		var py := floor_y - 30.0 - k * height
-		var size := 16.0 + k * 40.0 + float(h % 3) * 4.0
-		var col := Color(0.85, 0.9, 1.0, 0.45 * (1.0 - k))
-		draw_rect(Rect2(snappedf(px - size * 0.5, 4), snappedf(py - size * 0.5, 4), snappedf(size, 4), snappedf(size, 4)), col)
+		var py := floor_y - 50.0 - k * height
+		var f := 1 + mini(int(k * 4.0), 3)
+		var size := Vector2(32, 32) * S * (0.7 + k * 0.9)
+		var r := Rect2((Vector2(px, py) - size * 0.5).snapped(Vector2(S, S)), size.snapped(Vector2(S, S)))
+		draw_texture_rect_region(STEAM_TEX, r, Rect2(f * 32, 0, 32, 32), Color(1, 1, 1, 0.8 * (1.0 - k * 0.6)))
+
+
+## The awning sticks out of the tall building's wall, its bracket on the
+## right. It squashes when it catches you and springs back.
+func _draw_awning(o: Dictionary) -> void:
+	var f := 0
+	var riding: bool = world.carry.get("kind", "") == "awning"
+	if riding and world.t - grab_t < 0.12:
+		f = 1
+	elif riding or (o.used and world.t - release_t < 0.25):
+		f = 2
+	_sheet(AWNING_TEX, Rect2(f * 96, 0, 96, 32), Vector2(o.x1 - 96.0 * S, o.y0 - 6.0 * S))
+
+
+## Two poles and a cable from one to the other; the handle hangs on the
+## cable at the roof's edge, and rides down it with the courier.
+func _draw_zipline(o: Dictionary) -> void:
+	var a := Vector2(o.ax, o.ay)
+	var b := Vector2(o.bx, o.by)
+	for end in [[a, 0, o.a_roof], [b, 1, o.b_roof]]:
+		var p: Vector2 = end[0]
+		var top := p - Vector2(8, 4) * S
+		draw_rect(Rect2(top.x + 6 * S, top.y + 64 * S, 4 * S, end[2] - top.y - 64 * S), ROPE_DARK)
+		_sheet(ZIP_TEX, Rect2(end[1] * 16, 0, 16, 64), top)
+	var riding: bool = world.carry.get("kind", "") == "zipline"
+	if riding:
+		# The cable bends where the handle weighs it down.
+		var hands := _hands()
+		var pos := hands - Vector2(8, 22) * S
+		var wheel := pos + Vector2(8, 4) * S
+		_rope(a, wheel)
+		_rope(wheel, b)
+		_sheet(ZIP_TEX, Rect2(48, 0, 16, 64), pos)
+		return
+	_rope(a, b)
+	var hx: float = (o.x0 + o.x1) * 0.5
+	if o.used:
+		hx = b.x - 60.0
+	var cy := lerpf(a.y, b.y, clampf((hx - a.x) / (b.x - a.x), 0.0, 1.0))
+	_sheet(ZIP_TEX, Rect2(32, 0, 16, 64), Vector2(hx, cy) - Vector2(8, 4) * S)
+
+
+## The cradle hangs on two ropes from a winch on the tall roof. It waits deep
+## in the gap, rises with the courier in it, and stays up top.
+func _draw_cradle(o: Dictionary) -> void:
+	var top: float = o.top
+	var bx0: float = o.x1 + 10.0
+	_sheet(CRADLE_TEX, Rect2(128, 0, 64, 32), Vector2(bx0 - 20.0 * S, top - 32.0 * S))
+	var floor_y: float = o.y0
+	var riding: bool = world.carry.get("kind", "") == "cradle"
+	if riding:
+		floor_y = world.y
+	elif o.used:
+		floor_y = top
+	var pos := Vector2((o.x0 + o.x1) * 0.5 - 32.0 * S, floor_y - 24.0 * S)
+	for rx in [4.0, 60.0]:
+		_rope(Vector2(pos.x + rx * S, top - 22.0 * S), pos + Vector2(rx * S, 0), ROPE_DARK)
+	var f := 1 if riding and int(time * 6.0) % 2 == 0 else 0
+	_sheet(CRADLE_TEX, Rect2(f * 64, 0, 64, 32), pos)
+
+
+## A crane jib comes in from the top left; its cable runs down to the hook,
+## which hangs by the roof's edge, swings with the courier, then hangs free.
+func _draw_crane(o: Dictionary) -> void:
+	var pv := Vector2(o.pivot_x, o.pivot_y)
+	var x := pv.x - 16.0 * S - 32.0 * S
+	var n := 0
+	while n < 24:
+		_sheet(CRANE_TEX, Rect2(0, 0, 32, 32), Vector2(x, pv.y - 26.0 * S))
+		x -= 32.0 * S
+		n += 1
+	_sheet(CRANE_TEX, Rect2(32, 0, 32, 32), Vector2(pv.x - 16.0 * S, pv.y - 26.0 * S))
+	var grip: Vector2
+	if world.carry.get("kind", "") == "crane":
+		grip = _hands()
+	elif o.used:
+		grip = pv + Vector2(sin(time * 1.5) * 30.0, 420.0)
+	else:
+		grip = Vector2((o.x0 + o.x1) * 0.5 + sin(time * 2.0) * 6.0, (o.y0 + o.y1) * 0.5 + 20.0)
+	var pos := grip - Vector2(16, 28) * S
+	_rope(pv + Vector2(0, 4), pos + Vector2(16, 0) * S, ROPE_DARK)
+	_sheet(CRANE_TEX, Rect2(64, 0, 32, 32), pos)
+
+
+## Where the courier's fists are in the hanging poses.
+func _hands() -> Vector2:
+	return Vector2(world.x, world.y - (FEET - 6.0) * S)
+
 
 
 func _draw_parcel(p: Dictionary) -> void:
@@ -970,40 +1102,32 @@ func _draw_runner(c: Vector2) -> void:
 	if world.carry.is_empty():
 		draw_texture_rect_region(COURIER, Rect2(pos, size), src)
 		return
-	# Carried: hanging from a bat, or under the sheet in the steam.
-	# Placeholder poses until the art exists: the jump frame, arms up.
-	var sway := sin(time * 6.0) * 0.08
-	draw_set_transform(-c + Vector2(world.x, world.y - World.HEIGHT), sway)
-	draw_texture_rect_region(COURIER, Rect2(Vector2(-FRAME * 0.5 * S, -FEET * S + World.HEIGHT), size),
-		Rect2(F_JUMP * FRAME, 0, FRAME, FRAME))
-	draw_set_transform(-c)
-	var hands := Vector2(world.x + 6, world.y - World.HEIGHT - 6)
-	if world.carry.kind == "bat":
-		_draw_bat(hands + Vector2(0, -22), 14.0)
-	else:
-		_draw_sheet(hands)
+	# Carried: a pose from courier-tricks.png, by what is carrying you.
+	var kind: String = world.carry.kind
+	var f := T_HANG + int(time * 4.0) % 2
+	match kind:
+		"laundry":
+			f = T_CHUTE + int(time * 6.0) % 2
+		"awning":
+			f = T_SQUAT if world.t - grab_t < 0.12 else T_LAUNCH
+		"cradle":
+			f = T_CRADLE + int(time * 3.0) % 2
+	var tsrc := Rect2(f * FRAME, 0, FRAME, FRAME)
+	if f <= T_HANG + 1:
+		# Hanging: swing a little about the hands.
+		var hands := _hands()
+		draw_set_transform(-c + hands, sin(time * 6.0) * 0.1)
+		draw_texture_rect_region(TRICKS, Rect2(Vector2(-FRAME * 0.5 * S, -6.0 * S), size), tsrc)
+		draw_set_transform(-c)
+		if kind == "bat":
+			_sheet(BAT_TEX, Rect2(32 * (2 + int(time * 14.0) % 2), 0, 32, 24), hands - Vector2(16, 22) * S)
+		return
+	draw_texture_rect_region(TRICKS, Rect2(pos, size), tsrc)
+	if kind == "laundry":
+		# The sheet billows overhead, its corners in the fists.
+		var fists := Vector2(world.x, world.y - (FEET - 8.0) * S)
+		_sheet(LAUNDRY_TEX, Rect2(96, 0, 48, 48), fists - Vector2(32, 44) * S)
 
-
-## The bat, flapping; rate is wing beats a second.
-func _draw_bat(at: Vector2, rate: float) -> void:
-	Art.sprite(self, Art.BAT[int(time * rate) % 2], (at - Vector2(36, 24)).round(), 6.0)
-
-
-## The sheet held overhead like a parachute, with two corners in the hands.
-func _draw_sheet(hands: Vector2) -> void:
-	var top := hands + Vector2(0, -92)
-	var w := 120.0
-	var billow := roundf(sin(time * 9.0) * 2.0) * 2.0
-	for k in [-1.0, 1.0]:
-		var corner := top + Vector2(k * w * 0.5, 18)
-		var n := 10
-		for i in n:
-			var q: Vector2 = hands.lerp(corner, float(i) / n)
-			draw_rect(Rect2((q / S).round() * S, Vector2(S, S)), Art.TEXT.darkened(0.3))
-	var r := Rect2(top.x - w * 0.5, top.y - billow, w, 24 + billow)
-	draw_rect(r.grow(2), INK_DARK)
-	draw_rect(r, Art.TEXT)
-	draw_rect(Rect2(r.position.x, r.end.y - 6, r.size.x, 6), Color("4a78ff"))
 
 
 func _draw_best_flag(vp: Vector2, c: Vector2) -> void:
