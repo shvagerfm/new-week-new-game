@@ -37,7 +37,7 @@ The game also pauses when the window or tab loses focus.
 
 ## Screens
 
-- **Title:** the logo, a Play button, your best score and distance, and two lines on how to play. Any tap starts a run. Until `sprites/rooftop-dash-logo.png` exists, the title is set in the pixel font. Drop the PNG in (transparent, about 800×300) and it is fitted into the same 800×300 box, smoothed if it's a large painted image.
+- **Title:** the logo, a Play button, your best score and distance, and two lines on how to play. Any tap starts a run. The logo is `sprites/rooftop-dash-logo.png` (800×300 pixel art, 4×4 blocks), drawn at a whole-number scale with nearest filtering. If the file is missing, the title is set in the pixel font.
 - **Game Over:** a panel slides in after 0.45 s with the cause, the score, NEW BEST! or your best, then distance, parcels and best combo. A tap anywhere (or Space) runs again, and the Menu button (or Esc) goes back to the title.
 - **Mute:** the speaker button in the top-right corner, on every screen.
 

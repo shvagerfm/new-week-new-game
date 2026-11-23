@@ -4,8 +4,8 @@ extends Node2D
 ## behind them. main.gd owns the state; this draws it and says which button
 ## a tap landed on.
 
-## Dima's logo goes here (transparent, about 800x300). Until it exists, the
-## title is set in the pixel font instead.
+## The title logo (800x300 pixel art). If the file is missing, the title is
+## set in the pixel font instead.
 const LOGO_PATH := "res://sprites/rooftop-dash-logo.png"
 const LOGO_BOX := Vector2(800, 300)
 const FONT: FontFile = preload("res://fonts/Jersey10.ttf")  # OFL, see fonts/OFL.txt
@@ -37,9 +37,6 @@ func _ready() -> void:
 	bold.spacing_glyph = 2
 	if ResourceLoader.exists(LOGO_PATH):
 		logo = load(LOGO_PATH)
-		# A big painted logo is scaled down, so smooth it; pixel art stays sharp.
-		if logo.get_width() > LOGO_BOX.x * 0.6:
-			texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
 
 
 ## The name of the button under pos ("play", "again", "menu"), or "".
@@ -79,9 +76,12 @@ func _draw_title(vp: Vector2) -> void:
 	var cx := vp.x * 0.5
 	var box := Rect2(cx - LOGO_BOX.x * 0.5, 30, LOGO_BOX.x, LOGO_BOX.y)
 	if logo:
+		# The logo is pixel art: whole-number scale (or a whole-number
+		# fraction if it is too big), drawn with the node's nearest filter.
 		var s := minf(box.size.x / logo.get_width(), box.size.y / logo.get_height())
+		s = floorf(s) if s >= 1.0 else 1.0 / ceilf(1.0 / s)
 		var size := Vector2(logo.get_width(), logo.get_height()) * s
-		draw_texture_rect(logo, Rect2(box.get_center() - size * 0.5, size), false)
+		draw_texture_rect(logo, Rect2((box.get_center() - size * 0.5).round(), size), false)
 	else:
 		_text(Vector2(cx, box.position.y + 140), "ROOFTOP", 128, Art.ORANGE, 20, 8)
 		_text(Vector2(cx, box.position.y + 268), "DASH", 128, Art.GOLD, 20, 8)
