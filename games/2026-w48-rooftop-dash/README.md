@@ -35,6 +35,12 @@ The game also pauses when the window or tab loses focus.
   - Crumbling roof (cracked, rust-tinted): it gives way a quarter second after you land, so jump off quickly.
 - **Score** is metres plus bonus points. The best score and the best distance are saved. A flag marks the best distance on the roofs, and a line counts down the last 100 m to it.
 
+## Screens
+
+- **Title:** the logo, a Play button, your best score and distance, and two lines on how to play. Any tap starts a run. Until `sprites/rooftop-dash-logo.png` exists, the title is set in the pixel font. Drop the PNG in (transparent, about 800×300) and it is fitted into the same 800×300 box, smoothed if it's a large painted image.
+- **Game Over:** a panel slides in after 0.45 s with the cause, the score, NEW BEST! or your best, then distance, parcels and best combo. A tap anywhere (or Space) runs again, and the Menu button (or Esc) goes back to the title.
+- **Mute:** the speaker button in the top-right corner, on every screen.
+
 ## Sound
 
 Every sound is synthesized by `sfx/make_sfx.py`, so a recipe change is one script run away.
@@ -56,6 +62,8 @@ Every sound is synthesized by `sfx/make_sfx.py`, so a recipe change is one scrip
 
 | `art.gd` | Palette for the HUD and effects, plus the old string sprites used by `art/make_icon.py` |
 | `sfx.gd` | Sound effect pool |
+| `screens.gd` | Title and Game Over screens, drawn over the running city; says which button a tap hit |
+| `fonts/Jersey10.ttf` | Pixel font for all text (SIL Open Font License, see `fonts/OFL.txt`) |
 | `music.gd` | The music: three stems started together, faded in by speed |
 | `sfx/make_sfx.py` | Synthesizes every sound and the music loop (`python3 sfx/make_sfx.py`, needs numpy) |
 | `art/make_icon.py` | Draws `icon.png` from the courier sprite (needs Pillow) |
