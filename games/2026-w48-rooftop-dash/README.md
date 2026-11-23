@@ -83,7 +83,7 @@ Every sound is synthesized by `sfx/make_sfx.py`, so a recipe change is one scrip
 | `sprites/window-scenes.png` | Six window scenes, one per row, six 32×40 frames each: cat and pot, disco dancer, granny with binoculars, couple and pillow, grandpa lifting, dog |
 | `sprites/window-props.png` | 16×16 bits the scenes throw out: pot, pillow, feather, disco light, WOOF, glint |
 | `sprites/courier-tricks.png` | 8 more courier poses, 64×64, feet at y = 58: hanging (hands at 32, 6), parachute, squat, launch, riding the cradle |
-| `sprites/bat.png`, `steam.png`, `laundry.png`, `skylight.png`, `awning.png`, `zipline.png`, `cradle.png`, `crane.png` | The puzzle points and skylights. Sizes, frames and anchor points are in the art list; all are placeholders for now |
+| `sprites/bat.png`, `steam.png`, `laundry.png`, `skylight.png`, `awning.png`, `zipline.png`, `cradle.png`, `crane.png` | The puzzle points and skylights. Sizes, frames and anchor points are in the art list |
 | `art.gd` | Palette for the HUD and effects, plus the old string sprites used by `art/make_icon.py` |
 | `sfx.gd` | Sound effect pool |
 | `screens.gd` | Title and Game Over screens, drawn over the running city; says which button a tap hit |
@@ -91,7 +91,7 @@ Every sound is synthesized by `sfx/make_sfx.py`, so a recipe change is one scrip
 | `music.gd` | The music: three stems started together, faded in by speed |
 | `sfx/make_sfx.py` | Synthesizes every sound and the music loop (`python3 sfx/make_sfx.py`, needs numpy) |
 | `art/make_icon.py` | Draws `icon.png` from the courier sprite (needs Pillow) |
-| `art/make_placeholders.py` | Draws placeholder sheets at the final sizes, to paint over. It only writes sheets that are missing unless named |
+| `art/make_placeholders.py` | Draws rough placeholder sheets at the final sizes (the shipped sheets are the real art). It only writes sheets that are missing unless named, so it never overwrites them |
 
 The gameplay layer (courier, roofs, obstacles, parcels) is drawn at 2x; the skylines fill the screen height (1:1 or 2x). Roofs are built from the left, middle and right tiles (the coping), and the facade cells repeat below them, floor after floor, down to the street. The antenna is stretched to its 200 px height by repeating a stretch of its pole.
 

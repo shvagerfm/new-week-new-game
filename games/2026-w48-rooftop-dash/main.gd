@@ -1125,7 +1125,7 @@ func _draw_runner(c: Vector2) -> void:
 	draw_texture_rect_region(TRICKS, Rect2(pos, size), tsrc)
 	if kind == "laundry":
 		# The sheet billows overhead, its corners in the fists.
-		var fists := Vector2(world.x, world.y - (FEET - 8.0) * S)
+		var fists := Vector2(world.x, world.y - (FEET - 18.0) * S)
 		_sheet(LAUNDRY_TEX, Rect2(96, 0, 48, 48), fists - Vector2(32, 44) * S)
 
 
