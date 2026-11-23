@@ -12,9 +12,9 @@ var tried := 0
 var best := 0.0
 ## [tick, hold] per jump, in order; tick counts World steps since start().
 var plan: Array = []
-var stats := {"ac": 0, "antenna": 0, "skylight": 0, "bat": 0, "laundry": 0, "wire": 0, "crumble": 0}
-## Puzzle points solved: the bat and the steam lift.
-var rides := {"bat": 0, "laundry": 0}
+var stats := {"ac": 0, "antenna": 0, "skylight": 0, "wire": 0, "crumble": 0}
+## Puzzle points met (stats) and solved (rides), by kind.
+var rides := {}
 var _seen := {}
 ## Prefer launches this many ticks before the last safe one, like a person
 ## who doesn't wait for the very edge. 0 jumps as late as possible.
@@ -63,34 +63,70 @@ func _run(w: World, goal: float) -> bool:
 		starts = starts.slice(early / STEP) + skip
 	for s in starts:
 		for h in HOLDS:
-			var j: World = s.clone()
 			tried += 1
-			if _jump(j, h):
+			_tap_tick = -1
+			var j := _jump(s.clone(), h)
+			if j:
 				best = maxf(best, j.meters())
 				plan.append([_ticks(s), h])
+				var taps := 0
+				if _tap_tick >= 0:
+					plan.append([_tap_tick, 0])
+					taps = 1
 				if _run(j, goal):
 					_count(w, j)
 					return true
-				plan.pop_back()
+				for i in taps + 1:
+					plan.pop_back()
 	return false
 
 
-func _jump(w: World, hold: int) -> bool:
+var _tap_tick := -1
+
+
+## Plays one jump from w; the world where it lands, or null if it dies.
+func _jump(w: World, hold: int) -> World:
 	for i in 240:
+		if w.carry.get("tap", false):
+			return _ride(w)
 		w.step(i <= hold)
 		if not w.alive:
-			return false
+			return null
 		if i > 0 and w.grounded:
-			return true
-	return false
+			return w
+	return null
+
+
+## On a ride that you leave with a tap (the crane): tries letting go on each
+## tick in turn, latest first, and keeps the first that lands.
+func _ride(w: World) -> World:
+	var ticks := 0
+	var probe := w.clone()
+	while not probe.carry.is_empty() and ticks < 400:
+		probe.step(false)
+		ticks += 1
+	for k in range(ticks - 1, -1, -1):
+		var r := w.clone()
+		for i in k:
+			r.step(false)
+		var at := _ticks(r)
+		r.step(true, true)
+		for i in 240:
+			r.step(false)
+			if not r.alive:
+				break
+			if r.grounded:
+				_tap_tick = at
+				return r
+	return null
 
 
 func _count(from: World, to: World) -> void:
 	for o in to.obstacles:
-		if o.x0 > from.x and o.x0 <= to.x:
-			stats[o.kind] += 1
+		if o.x1 > from.x and o.x1 <= to.x:
+			stats[o.kind] = stats.get(o.kind, 0) + 1
 			if o.get("grab", false) and o.used:
-				rides[o.kind] += 1
+				rides[o.kind] = rides.get(o.kind, 0) + 1
 	for wr in to.wires:
 		if wr.ax > from.x - 20.0 and wr.ax <= to.x:
 			stats.wire += 1

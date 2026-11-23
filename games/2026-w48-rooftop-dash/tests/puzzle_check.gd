@@ -13,9 +13,12 @@ func _initialize() -> void:
 		if a.begins_with("--seeds="):
 			seeds = a.get_slice("=", 1).to_int()
 	var fails := 0
-	for kind in ["bat", "laundry"]:
+	for kind in World.PIECES:
 		for s in range(1, seeds + 1):
 			var first := _first(s, kind)
+			if first == INF:
+				print("%-7s seed %2d  none in the first 4000 m" % [kind, s])
+				continue
 			var w := World.new(s)
 			w.start()
 			w.no_grab = [kind]
