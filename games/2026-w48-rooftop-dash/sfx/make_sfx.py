@@ -1,7 +1,9 @@
 """Synthesizes the game's sound effects into WAV files next to this script.
 
 Run: python3 sfx/make_sfx.py   (needs numpy)
-Also writes music.wav, a 15-second loop the game speeds up as the run gets faster.
+Also writes the music: an 8-bar loop split into three stems (music_base.wav,
+music_drums.wav, music_lead.wav) that the game fades in one by one as the run
+gets faster.
 
 Every sound is built from sines, soft square waves and filtered noise, so the
 set stays small and consistent. Change a recipe and run again to regenerate.
@@ -157,6 +159,34 @@ save("fall", mix(
     lowpass(noise(d), 500) * env(n, 0.3, 0.6) * 0.4,
 ), peak=0.4)
 
+# Caught in a wire: an electric zap, buzzing and crackling.
+d = 0.45
+n = int(RATE * d)
+buzz = tone(np.linspace(120, 90, n), d, "saw", 0.7) * (0.6 + 0.4 * np.sign(np.sin(2 * np.pi * 31 * t_axis(d))))
+crackle = highpass(noise(d), 2500) * (rng.uniform(0, 1, n) > 0.85) * 0.8
+save("zap", mix(buzz * env(n, 0.001, 0.35), crackle * env(n, 0.001, 0.25)), peak=0.6)
+
+# Running into an antenna: a metal clang with a ringing tail.
+d = 0.6
+n = int(RATE * d)
+ring = sum(tone(f, d) * env(n, 0.001, dec) * v
+           for f, dec, v in [(523, 0.5, 0.6), (1187, 0.35, 0.4), (1873, 0.2, 0.3), (2719, 0.12, 0.2)])
+save("clang", mix(ring, lowpass(noise(0.05), 3000) * env(int(RATE * 0.05), 0.001, 0.02) * 0.8), peak=0.6)
+
+# A crumbling roof gives way: a deeper crash of falling rubble.
+d = 0.7
+n = int(RATE * d)
+rubble = lowpass(noise(d), 900) * env(n, 0.003, 0.6)
+rubble *= 0.4 + 0.6 * (rng.uniform(0, 1, n) > 0.7)
+save("collapse", mix(rubble, tone(np.linspace(70, 35, n), d) * env(n, 0.005, 0.5) * 0.8,
+                     at(lowpass(noise(0.15), 1500) * env(int(RATE * 0.15), 0.001, 0.08) * 0.7, 0.12)), peak=0.5)
+
+# A footstep on the roof: a tiny soft tap, played quietly on every stride.
+d = 0.05
+n = int(RATE * d)
+save("step", mix(lowpass(noise(d), 1800) * env(n, 0.001, 0.025),
+                 tone(np.linspace(130, 80, n), d) * env(n, 0.001, 0.03) * 0.5), peak=0.3)
+
 # Passing the record: rising arpeggio.
 parts = []
 for i, nm in enumerate(["C5", "E5", "G5", "C6", "E6"]):
@@ -171,15 +201,19 @@ save("click", tone(1500, d) * env(n, 0.001, 0.015) + tone(750, d) * env(n, 0.001
 
 
 # --- Music: an 8-bar night-drive loop at 128 bpm in A minor. -------------
-# Notes that ring past the end wrap around to the start, so the loop is seamless.
+# It is written as three stems of the same length that the game plays
+# together: base (bass, kick, pad) from the start, then drums (hats and
+# snare), then lead (arpeggio and a hook) as the run speeds up.
+# Notes that ring past the end wrap around to the start, so each loop is seamless.
 BPM = 128
 BEAT = 60 / BPM
 BARS = 8
 LOOP = int(RATE * BEAT * 4 * BARS)
-song = np.zeros(LOOP)
+stems = {"base": np.zeros(LOOP), "drums": np.zeros(LOOP), "lead": np.zeros(LOOP)}
 
 
-def put(x, start):
+def put(stem, x, start):
+    song = stems[stem]
     i = int(RATE * start) % LOOP
     while len(x):
         k = min(len(x), LOOP - i)
@@ -190,39 +224,50 @@ def put(x, start):
 
 chords = [("A2", ["A4", "C5", "E5"]), ("F2", ["F4", "A4", "C5"]),
           ("C3", ["C5", "E5", "G5"]), ("G2", ["G4", "B4", "D5"])]
+# A short hook over bars 5-8: (beat in the 4-bar phrase, note, length in beats).
+hook = [(0, "E5", 1.5), (1.5, "D5", 0.5), (2, "C5", 1), (3, "E5", 1),
+        (4, "F5", 1.5), (5.5, "E5", 0.5), (6, "C5", 2),
+        (8, "G5", 1.5), (9.5, "E5", 0.5), (10, "D5", 1), (11, "C5", 1),
+        (12, "B4", 1.5), (13.5, "C5", 0.5), (14, "D5", 2)]
 for bar in range(BARS):
     root, triad = chords[bar % 4]
     t0 = bar * 4 * BEAT
     for e in range(8):  # driving eighth-note bass, octave jumps on the off-beats
         f = note(root) * (2 if e % 2 else 1)
         dd = BEAT / 2
-        put(lowpass(tone(f, dd, "saw", 0.5), 900) * env(int(RATE * dd), 0.004, dd * 0.8), t0 + e * dd)
+        put("base", lowpass(tone(f, dd, "saw", 0.5), 900) * env(int(RATE * dd), 0.004, dd * 0.8), t0 + e * dd)
     for b in range(4):  # kick on every beat
         dd = 0.18
         k = int(RATE * dd)
-        put(tone(np.geomspace(140, 45, k), dd) * env(k, 0.001, 0.12) * 1.2, t0 + b * BEAT)
-    for b in range(4):  # closed hat on the off-beats, snare on 2 and 4
-        put(highpass(noise(0.04), 6000) * env(int(RATE * 0.04), 0.001, 0.02) * 0.25, t0 + b * BEAT + BEAT / 2)
-        if b % 2 == 1:
-            put(mix(lowpass(noise(0.14), 3500) * env(int(RATE * 0.14), 0.001, 0.08) * 0.5,
-                    tone(190, 0.08) * env(int(RATE * 0.08), 0.001, 0.05) * 0.4), t0 + b * BEAT)
-    # Sixteenth-note arpeggio, only in the second half so the loop builds.
-    if bar >= 4:
-        seq = triad + [triad[1]]
-        for s in range(16):
-            dd = BEAT / 4
-            put(lowpass(tone(note(seq[s % 4]), dd, "square", 0.22), 3500) * env(int(RATE * dd), 0.002, dd * 0.6),
-                t0 + s * dd)
-    # Pad chord.
-    dd = 4 * BEAT
+        put("base", tone(np.geomspace(140, 45, k), dd) * env(k, 0.001, 0.12) * 1.2, t0 + b * BEAT)
+    for s16 in range(16):  # hats: open on the off-beats, quiet ticks between
+        dd = 0.04
+        v = 0.25 if s16 % 4 == 2 else 0.08
+        put("drums", highpass(noise(dd), 6000) * env(int(RATE * dd), 0.001, 0.02) * v, t0 + s16 * BEAT / 4)
+    for b in (1, 3):  # snare on 2 and 4
+        put("drums", mix(lowpass(noise(0.14), 3500) * env(int(RATE * 0.14), 0.001, 0.08) * 0.5,
+                         tone(190, 0.08) * env(int(RATE * 0.08), 0.001, 0.05) * 0.4), t0 + b * BEAT)
+    seq = triad + [triad[1]]
+    for s16 in range(16):  # sixteenth-note arpeggio
+        dd = BEAT / 4
+        put("lead", lowpass(tone(note(seq[s16 % 4]), dd, "square", 0.2), 3500) * env(int(RATE * dd), 0.002, dd * 0.6),
+            t0 + s16 * dd)
+    dd = 4 * BEAT  # pad chord
     for nm in triad:
-        put(lowpass(tone(note(nm) / 2, dd, "tri", 0.14), 1500) * env(int(RATE * dd), 0.3, dd * 1.2), t0)
+        put("base", lowpass(tone(note(nm) / 2, dd, "tri", 0.14), 1500) * env(int(RATE * dd), 0.3, dd * 1.2), t0)
+for half in (16,):
+    for beat, nm, length in hook:
+        dd = length * BEAT
+        put("lead", lowpass(tone(note(nm), dd, "tri", 0.35), 2500) * env(int(RATE * dd), 0.01, dd * 0.9),
+            (half + beat) * BEAT)
 
-song = song / np.max(np.abs(song)) * 0.7
-with wave.open(os.path.join(OUT, "music.wav"), "wb") as w:
-    w.setnchannels(1)
-    w.setsampwidth(2)
-    w.setframerate(RATE)
-    w.writeframes((song * 32767).astype("<i2").tobytes())
+# One gain for all stems, so they keep their balance when mixed.
+gain = 0.75 / np.max(np.abs(sum(stems.values())))
+for name, song in stems.items():
+    with wave.open(os.path.join(OUT, "music_%s.wav" % name), "wb") as w:
+        w.setnchannels(1)
+        w.setsampwidth(2)
+        w.setframerate(RATE)
+        w.writeframes((song * gain * 32767).astype("<i2").tobytes())
 
 print("wrote", sorted(f for f in os.listdir(OUT) if f.endswith(".wav")))

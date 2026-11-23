@@ -24,6 +24,7 @@ var passed_best := false
 var new_best := false
 var runs := 0
 var muted := false
+var stride := 0              # footfalls so far, for the step sound
 var land_t := -1.0          # world time of the last landing, for the squash frame
 
 var touches := {}           # touch index -> true while a finger is down
@@ -33,7 +34,7 @@ var particles: Array = []   # {p, v, life, max, col, size}
 var popups: Array = []      # {p, text, life, col}
 
 @onready var sfx: Sfx = $Sfx
-var music: AudioStreamPlayer
+var music: Music
 var score_label: Label
 var meters_label: Label
 var mult_label: Label
@@ -47,12 +48,7 @@ func _ready() -> void:
 	texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	_load()
 	_build_hud()
-	music = AudioStreamPlayer.new()
-	var loop: AudioStreamWAV = preload("res://sfx/music.wav")
-	loop.loop_mode = AudioStreamWAV.LOOP_FORWARD
-	loop.loop_end = int(loop.get_length() * loop.mix_rate)
-	music.stream = loop
-	music.volume_db = -6.0
+	music = Music.new()
 	add_child(music)
 	_set_muted(muted)
 	_new_world()
@@ -159,9 +155,7 @@ func _start_run() -> void:
 	_set_hud_visible(true)
 	sfx.play("click")
 	if not muted:
-		music.pitch_scale = 1.0
-		music.volume_db = -6.0
-		music.play()
+		music.start()
 
 
 func _show_title() -> void:
@@ -180,7 +174,7 @@ func _show_title() -> void:
 func _pause() -> void:
 	state = State.PAUSED
 	_release_all()
-	music.stream_paused = true
+	music.set_paused(true)
 	hint_label.text = "Paused\n\nTap to keep running"
 	hint_label.offset_top = 0
 	hint_label.show()
@@ -190,7 +184,7 @@ func _resume() -> void:
 	state = State.RUN
 	world.was_held = true
 	tapped = false
-	music.stream_paused = false
+	music.set_paused(false)
 	hint_label.hide()
 
 
@@ -239,6 +233,12 @@ func _physics_process(_delta: float) -> void:
 	if was_alive and not world.alive:
 		_game_over()
 	if state == State.RUN and world.alive:
+		# A quiet footstep on every stride (each 3 run frames of 26 px).
+		var s := int(world.x / 78.0)
+		if s != stride:
+			stride = s
+			if world.grounded and world.t - land_t > 0.1:
+				sfx.play("step", 0.08, -10.0)
 		if best_m > 0.0 and not passed_best and world.meters() > best_m:
 			passed_best = true
 			_popup(Vector2(world.x, world.y - 160.0), "Best distance!", Art.GOLD)
@@ -266,7 +266,7 @@ func _process(delta: float) -> void:
 		if over_t >= RESTART_DELAY and not hint_label.visible:
 			_show_results()
 	if state == State.RUN:
-		music.pitch_scale = 1.0 + 0.2 * world.speed_frac()
+		music.set_speed(world.speed_frac())
 	_update_hud()
 	queue_redraw()
 
@@ -308,12 +308,14 @@ func _on_event(e: Dictionary) -> void:
 			sfx.play("crumble")
 		"collapse":
 			_dust(Vector2(e.x, e.y), 16, 0.0)
+			sfx.play("collapse", 0.05)
 		"die":
 			shake = 16.0
 			if e.reason == "fall":
 				sfx.play("fall")
 			else:
-				sfx.play("hit")
+				# Each obstacle sounds like what it is.
+				sfx.play({"wire": "zap", "antenna": "clang"}.get(e.reason, "hit"))
 				flash = 1.0
 				_sparks(Vector2(world.x, world.y - 30), 10)
 
@@ -775,7 +777,8 @@ func _set_muted(m: bool) -> void:
 	if m:
 		music.stop()
 	elif state == State.RUN and world.alive:
-		music.play()
+		music.start()
+		music.set_speed(world.speed_frac())
 	_save()
 
 

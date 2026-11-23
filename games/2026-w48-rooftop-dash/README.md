@@ -35,6 +35,15 @@ The game also pauses when the window or tab loses focus.
   - Crumbling roof (cracked, rust-tinted): it gives way a quarter second after you land, so jump off quickly.
 - **Score** is metres plus bonus points. The best score and the best distance are saved. A flag marks the best distance on the roofs, and a line counts down the last 100 m to it.
 
+## Sound
+
+Every sound is synthesized by `sfx/make_sfx.py`, so a recipe change is one script run away.
+
+- **Effects:** jump, landing (louder after a long drop), a quiet footstep each stride, edge chime (pitched up with the multiplier), combo lost, parcel, crumble creak, roof collapse, new best, and a death sound for each cause: a knock for walls and AC units, a clang for antennas, a zap for wires and a whistle for falls.
+- **Music:** an 8-bar loop at 128 bpm in three stems. The base (bass, kick, pad) plays from the first step. The drums fade in from 6% to 22% of the speed ramp (about 40-150 m), and the lead (arpeggio and a hook) from 30% to 50% (about 210-420 m). The loop also plays up to 12% faster at top speed. On death it slows and fades out.
+- **Mute:** the speaker button or M. The setting is saved.
+- **Web:** browsers keep audio locked until the first tap, click or key, and that same press starts the run and the music.
+
 ## Code
 
 | File | What it does |
@@ -47,13 +56,14 @@ The game also pauses when the window or tab loses focus.
 
 | `art.gd` | Palette for the HUD and effects, plus the old string sprites used by `art/make_icon.py` |
 | `sfx.gd` | Sound effect pool |
+| `music.gd` | The music: three stems started together, faded in by speed |
 | `sfx/make_sfx.py` | Synthesizes every sound and the music loop (`python3 sfx/make_sfx.py`, needs numpy) |
 | `art/make_icon.py` | Draws `icon.png` from the courier sprite (needs Pillow) |
 
 The gameplay layer (courier, roofs, obstacles, parcels) is drawn at 2x; the skylines fill the screen height (1:1 or 2x). Roofs are built from the left, middle and right tiles, and the facade rows of the tiles repeat down to the street. The antenna is stretched to its 200 px height by repeating a stretch of its pole.
 
 
-The generator only places a gap if a jump from the edge covers it with room to spare: it simulates the jump with the same physics (`World.reach`). The music speeds up with the run (pitch 1.0 to 1.2).
+The generator only places a gap if a jump from the edge covers it with room to spare: it simulates the jump with the same physics (`World.reach`).
 
 ## Tests
 
