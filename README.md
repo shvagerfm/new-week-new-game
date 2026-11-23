@@ -20,6 +20,8 @@ tools/build-web.sh   exports every game to site/ (used by CI, works locally too)
 tools/new-game.sh tap-tap-boom          # -> games/<this ISO week>-tap-tap-boom
 ```
 
+A game can switch to landscape by changing the viewport size and `window/handheld/orientation` in its own `project.godot` (Rooftop Dash does).
+
 Then in Godot 4.7, use **Import** and pick `games/<folder>/project.godot`. Commit and push to `main` when you want it online.
 
 On Windows, run the script from Git Bash.
