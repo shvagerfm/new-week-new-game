@@ -135,6 +135,7 @@ var levels_story: Label
 var levels_progress: Control
 var levels_grid: Control
 var levels_bg: Texture2D
+var play_bg: Texture2D  # behind the board
 var levels_current_tile: Button
 var play_hud: Control
 var title_label: Label
@@ -325,8 +326,7 @@ func _open_zone(i: int) -> void:
 func _show_levels() -> void:
 	screen = "levels"
 	var z: Dictionary = zones[zone_i]
-	var key: String = z.id.substr(z.id.find("-") + 1)
-	levels_bg = MenuArt.tex("levels-bg-" + key) if MenuArt.drawn("levels-bg-" + key) else MenuArt.tex("levels-bg")
+	levels_bg = _zone_bg(zone_i)
 	levels_screen.get_child(0).queue_redraw()
 	levels_title.text = z.name.to_upper()
 	levels_story.text = z.tagline if z.tagline != "" else z.story.get_slice(". ", 0)
@@ -360,6 +360,14 @@ func _show_levels() -> void:
 	levels_progress.set_meta("total", count)
 	levels_progress.queue_redraw()
 	_set_screen(levels_screen)
+
+
+## The zone's level-select background (its own if drawn, else the shared one),
+## also used behind the board.
+func _zone_bg(z: int) -> Texture2D:
+	var id: String = zones[z].id
+	var key := id.substr(id.find("-") + 1)
+	return MenuArt.tex("levels-bg-" + key) if MenuArt.drawn("levels-bg-" + key) else MenuArt.tex("levels-bg")
 
 
 func _draw_tile(b: Button) -> void:
@@ -662,6 +670,7 @@ func _start_level(z: int, i: int) -> void:
 	zone_i = z
 	level_i = i
 	lv = zones[z].levels[i].rules
+	play_bg = _zone_bg(z)
 	_find_outer_walls()
 	screen = "play"
 	_set_screen(play_hud)
@@ -1078,6 +1087,18 @@ func _cell_rect(p: Vector2) -> Rect2:
 func _draw() -> void:
 	if screen != "play" or lv == null:
 		return
+	# The zone's level-select background, dimmed, with a dark panel behind
+	# the room so the board stays easy to read.
+	var view := get_viewport_rect().size
+	_draw_backdrop(self, play_bg, view, 0.62)
+	var room := Rect2(origin + (Vector2(core.position) - Vector2.ONE * RIM) * cell,
+			(Vector2(core.size) + Vector2.ONE * RIM * 2.0) * cell).grow(cell * 0.18)
+	var panel := StyleBoxFlat.new()
+	panel.bg_color = Color(C_BG, 0.72)
+	panel.set_corner_radius_all(int(cell * 0.3))
+	panel.shadow_color = Color(0, 0, 0, 0.35)
+	panel.shadow_size = int(cell * 0.25)
+	draw_style_box(panel, room)
 	var on := lv.hazards_on(state)
 	for p in lv.inside:
 		_draw_floor(p, on)
@@ -1715,17 +1736,20 @@ func _menu_stage(bg: Callable) -> Control:
 
 ## The background at full brightness behind the stage, and a dimmed copy
 ## filling the rest of a screen that is wider or taller than 9:16.
-func _draw_backdrop(c: Control, tex: Texture2D) -> void:
-	c.draw_rect(Rect2(Vector2.ZERO, c.size), C_BG)
+## light: brightness of the stage part (the board screen dims it).
+func _draw_backdrop(c: CanvasItem, tex: Texture2D, size := Vector2.ZERO, light := 1.0) -> void:
+	if size == Vector2.ZERO:
+		size = (c as Control).size
+	c.draw_rect(Rect2(Vector2.ZERO, size), C_BG)
 	if tex == null:
 		return
 	var ts := tex.get_size()
-	var stage := Rect2(((c.size - STAGE) / 2.0).floor(), STAGE)
-	var k := maxf(c.size.x / ts.x, c.size.y / ts.y)
-	var cover := Rect2((c.size - ts * k) / 2.0, ts * k)
+	var stage := Rect2(((size - STAGE) / 2.0).floor(), STAGE)
+	var k := maxf(size.x / ts.x, size.y / ts.y)
+	var cover := Rect2((size - ts * k) / 2.0, ts * k)
 	if not cover.is_equal_approx(stage):
-		c.draw_texture_rect(tex, cover, false, Color(0.3, 0.32, 0.4))
-	c.draw_texture_rect(tex, stage, false)
+		c.draw_texture_rect(tex, cover, false, Color(0.3, 0.32, 0.4) * Color(light, light, light))
+	c.draw_texture_rect(tex, stage, false, Color(light, light, light))
 
 
 func _menu_label(text: String, mock_size: float, color: Color) -> Label:
