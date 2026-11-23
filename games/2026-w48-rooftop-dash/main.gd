@@ -598,7 +598,7 @@ const WIN_W := 32.0
 const WIN_H := 40.0
 const SCENES_FROM_M := 60.0             # no scenes on the first roofs
 const SCENE_CHANCE := 55                # percent of roofs after that
-enum Scene {CAT, DISCO, GRANNY, COUPLE, GRANDPA, DOG}
+enum Scene {CAT, DISCO, GRANNY, COUPLE, GRANDPA, DOG, MIRROR}
 const DISCO_COLS := [Color("ff4d5e"), Color("4a78ff"), Color("ffd27a"), Color("4caf50"), Color("8a66b8"), Color("ff8a3d")]
 
 ## Effects the scenes throw out, drawn over the roofs (back) or over the
@@ -646,7 +646,7 @@ func _draw_facade(r: Dictionary, top: float, bottom: float, tint: Color, c: Vect
 			if cells[i][2] == 1:
 				wins.append(i)
 		if not wins.is_empty():
-			scene = (h >> 7) % 6
+			scene = (h >> 7) % Scene.size()
 			scene_at = Vector2i(wins[(h >> 4) % wins.size()], (h >> 11) % 2)
 	var floor_i := 0
 	var yy := top
@@ -727,6 +727,9 @@ func _draw_scene(kind: int, at: Vector2, r: Dictionary) -> void:
 				_fx_front.append({"kind": "woof", "at": at + Vector2(size.x * 0.5, -40), "k": int(time * 8.0) % 2})
 			else:
 				f = 4 if d > 0.0 else 5
+		Scene.MIRROR:
+			# Poses for the mirror, spots the courier, then shuts the curtain.
+			f = clampi(int((1000.0 - d) / 110.0), 0, 5)
 	draw_texture_rect_region(SCENES, Rect2(at + shake, size), Rect2(f * WIN_W, kind * WIN_H, WIN_W, WIN_H))
 	_draw_glass(at, 0.12)
 

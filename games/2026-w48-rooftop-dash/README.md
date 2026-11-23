@@ -53,6 +53,7 @@ The game also pauses when the window or tab loses focus.
   - Couple: argue, and a pillow flies out of the window and tumbles towards the screen.
   - Grandpa: lifts dumbbells in front of a flickering TV that lights up the wall.
   - Dog: wakes as you come, barks (WOOF, the glass shakes), then squashes its nose on the glass.
+  - Mirror: a pin-up poses for her mirror, blows it a kiss, spots you and yanks the curtain shut.
 
 ## Screens
 
@@ -80,7 +81,7 @@ Every sound is synthesized by `sfx/make_sfx.py`, so a recipe change is one scrip
 | `sprites/skyline-*.png` | Far, middle and near parallax layers, wrapping. 1280×720 is drawn 1:1; 640×360 is drawn at 2x |
 | `sprites/facade.png` | 4×2 atlas of 64×64 facade cells, one floor each: left end, wall with window, plain wall, right end; row 2 is the crumbling look. The window opening (x 16-47, y 12-51) is see-through |
 | `sprites/window-rooms.png` | 32×40 rooms behind the glass: kitchen, bedroom, living room, stairs, dark |
-| `sprites/window-scenes.png` | Six window scenes, one per row, six 32×40 frames each: cat and pot, disco dancer, granny with binoculars, couple and pillow, grandpa lifting, dog |
+| `sprites/window-scenes.png` | Seven window scenes, one per row, six 32×40 frames each: cat and pot, disco dancer, granny with binoculars, couple and pillow, grandpa lifting, dog, mirror pin-up |
 | `sprites/window-props.png` | 16×16 bits the scenes throw out: pot, pillow, feather, disco light, WOOF, glint |
 | `sprites/courier-tricks.png` | 8 more courier poses, 64×64, feet at y = 58: hanging (hands at 32, 6), parachute, squat, launch, riding the cradle |
 | `sprites/bat.png`, `steam.png`, `laundry.png`, `skylight.png`, `awning.png`, `zipline.png`, `cradle.png`, `crane.png` | The puzzle points and skylights. Sizes, frames and anchor points are in the art list |
