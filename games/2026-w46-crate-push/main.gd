@@ -329,6 +329,12 @@ func _show_levels() -> void:
 	levels_bg = _zone_bg(zone_i)
 	levels_screen.get_child(0).queue_redraw()
 	levels_title.text = z.name.to_upper()
+	# Long names (MAINTENANCE TUNNELS) shrink to fit the title plate.
+	var fs := roundi(96 * MOCK)
+	var font := MenuArt.font()
+	while fs > 30 and font.get_string_size(levels_title.text, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x > levels_title.size.x:
+		fs -= 2
+	levels_title.add_theme_font_size_override("font_size", fs)
 	levels_story.text = z.tagline if z.tagline != "" else z.story.get_slice(". ", 0)
 	for c in levels_grid.get_children():
 		c.queue_free()

@@ -31,6 +31,10 @@ func _initialize() -> void:
 	await _shot("1-menu", 1.2)
 	main._show_map()
 	await _shot("2-map", 0.6)
+	# Partway into the Maintenance Tunnels, so the level list shows stars,
+	# the next room and locked rooms.
+	for i in 3:
+		main.best[main.zones[4].levels[i].id] = [3, 2, 3][i]
 	main._open_zone(4)
 	await _shot("3-levels", 0.6)
 	await _play_shot("4-ice", 1, 1, 2)
