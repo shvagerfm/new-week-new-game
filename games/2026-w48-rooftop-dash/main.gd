@@ -220,7 +220,7 @@ func _physics_process(_delta: float) -> void:
 	if state == State.RUN and world.alive:
 		if best_m > 0.0 and not passed_best and world.meters() > best_m:
 			passed_best = true
-			_popup(Vector2(world.x, world.y - 110.0), "Best distance!", Art.GOLD)
+			_popup(Vector2(world.x, world.y - 160.0), "Best distance!", Art.GOLD)
 			sfx.play("best")
 
 
@@ -272,7 +272,7 @@ func _on_event(e: Dictionary) -> void:
 				shake = maxf(shake, (impact - 900.0) / 90.0)
 		"edge":
 			sfx.play("edge", 0.0, 0.0, 1.0 + 0.12 * (e.mult - 2))
-			_popup(Vector2(world.x, world.y - 90.0), "EDGE!  x%d" % e.mult, Art.ORANGE)
+			_popup(Vector2(world.x, world.y - 140.0), "EDGE!  x%d" % e.mult, Art.ORANGE)
 			_sparks(Vector2(e.x, e.y), 14)
 		"combo_lost":
 			sfx.play("combo_lost")
@@ -344,8 +344,7 @@ func _draw() -> void:
 		_draw_obstacle(o)
 	for p in world.parcels:
 		if not p.taken:
-			var bob := snappedf(sin(time * 4.0 + p.x * 0.01) * 4.0, 4.0)
-			Art.sprite(self, Art.PARCEL, Vector2(p.x - 12, p.y - 10 + bob).snapped(Vector2(4, 4)))
+			_draw_parcel(p)
 	_draw_runner(c)
 	for w in world.wires:
 		_draw_wire(w)
@@ -371,79 +370,60 @@ func _draw() -> void:
 	_draw_buttons(vp)
 
 
+# --- Art from sprites/ -----------------------------------------------------
+## Everything on the gameplay layer is pixel art drawn at 2x. The skylines are
+## already full-screen paintings, drawn 1:1.
+const S := 2.0
+const TILES: Texture2D = preload("res://sprites/rooftop.png")
+const SKY_FAR: Texture2D = preload("res://sprites/skyline-far.png")
+const SKY_MID: Texture2D = preload("res://sprites/skyline-middle.png")
+const SKY_NEAR: Texture2D = preload("res://sprites/skyline-near.png")
+const TILE := 64.0
+## In the roof tiles the walkable surface is 26 px down, and rows 34-64 are
+## facade (brick and a window) that repeats down to the street.
+const ROOF_TOP := 26.0
+const FACADE_Y := 34.0
+const WIRE_DARK := Color("1d2347")
+const WIRE_EDGE := Color("9aa9ee")
+
+var _sky_fill := {}   # texture -> [top colour, bottom colour] for the edges
+
+
+func _layer_fill(tex: Texture2D) -> Array:
+	if not _sky_fill.has(tex):
+		var img := tex.get_image()
+		_sky_fill[tex] = [img.get_pixel(4, 2), img.get_pixel(4, img.get_height() - 2)]
+	return _sky_fill[tex]
+
+
 func _draw_sky(vp: Vector2, c: Vector2) -> void:
-	# Bands from deep blue at the top to a warm haze at the horizon.
-	var horizon := vp.y * 0.8 - c.y * 0.08
-	var bands: int = Art.SKY.size()
-	var band_h := snappedf(maxf(horizon, 200.0) / bands, 4.0)
-	draw_rect(Rect2(Vector2.ZERO, vp), Art.SKY[0])
-	for i in range(1, bands):
-		var y0 := band_h * i
-		draw_rect(Rect2(0, y0, vp.x, vp.y - y0), Art.SKY[i])
-		# A dithered seam between bands.
-		for x in range(0, int(vp.x), 8):
-			draw_rect(Rect2(x + (4 if (x / 8) % 2 == 0 else 0), y0 - 4, 4, 4), Art.SKY[i])
-	# Stars in the upper sky, drifting slowly.
-	for i in 70:
-		var h := Art.hash3(i, 11)
-		var sx := fposmod(float(h % 4000) - c.x * 0.02, vp.x + 40.0)
-		var sy := float((h >> 12) % 1000) / 1000.0 * horizon * 0.6
-		var tw := 0.5 + 0.5 * sin(time * (1.0 + (h % 7) * 0.3) + h)
-		draw_rect(Rect2(snappedf(sx, 4), snappedf(sy, 4), 4, 4), Color(0.85, 0.88, 1.0, 0.25 + 0.6 * tw))
-	# The moon.
-	var mc := Vector2(snappedf(vp.x * 0.84, 4), snappedf(horizon * 0.2, 4))
-	for yy in range(-9, 10):
-		for xx in range(-9, 10):
-			if xx * xx + yy * yy <= 81:
-				var col := Color("ffe9c4") if xx * xx + yy * yy < 64 else Color("f5cf98")
-				if (xx - 3) * (xx - 3) + (yy + 2) * (yy + 2) < 5 or (xx + 3) * (xx + 3) + (yy - 3) * (yy - 3) < 3:
-					col = Color("e8c08c")
-				draw_rect(Rect2(mc.x + xx * 4, mc.y + yy * 4, 4, 4), col)
-	# Three layers of skyline, the farther the slower.
-	_draw_skyline(vp, c, horizon, 0.12, 0.05, 96.0, 1, Art.FAR, 0.3)
-	_draw_skyline(vp, c, horizon + 60.0, 0.25, 0.1, 128.0, 2, Art.MID, 0.4)
-	_draw_skyline(vp, c, horizon + 140.0, 0.45, 0.18, 160.0, 3, Art.NEAR, 0.5)
-	# The streets far below fade to black, so the gaps between roofs read as drops.
-	var deep := snappedf(horizon + 100.0 - (c.y - _cam_rest()) * 0.3, 4.0)
+	var dy := c.y - _cam_rest()
+	# Far: sky, moon and haze. Slow, because the moon repeats every 1280 px.
+	_draw_layer(SKY_FAR, vp, c.x * 0.04, clampf(-dy * 0.03, -40, 40), Color.WHITE)
+	_draw_layer(SKY_MID, vp, c.x * 0.15, clampf(-dy * 0.08, -90, 90) + 40.0, Color.WHITE)
+	# Near is darkened so it never reads as a roof you can land on.
+	_draw_layer(SKY_NEAR, vp, c.x * 0.35, clampf(-dy * 0.15, -120, 120) + 90.0, Color(0.62, 0.62, 0.78))
+	# The streets far below fade to black, so the gaps read as drops.
+	var deep := roundf(vp.y * 0.72 - dy * 0.3)
 	for i in 8:
-		draw_rect(Rect2(0, deep + i * 24, vp.x, vp.y), Color(0.01, 0.015, 0.05, 0.16))
+		draw_rect(Rect2(0, deep + i * 24, vp.x, vp.y), Color(0.01, 0.015, 0.05, 0.14))
 
 
-func _draw_skyline(vp: Vector2, c: Vector2, base: float, fx: float, fy: float, slot: float,
-		layer: int, col: Color, lights: float) -> void:
-	var scroll := c.x * fx
-	var y_base := snappedf(base - (c.y - _cam_rest()) * fy, 4.0)
-	var first := floori(scroll / slot) - 1
-	var last := first + ceili(vp.x / slot) + 2
-	for i in range(first, last + 1):
-		var h := Art.hash3(i, layer)
-		var w := snappedf(slot * (0.55 + (h % 40) / 100.0), 8.0)
-		var bh := snappedf((90.0 + float((h >> 6) % 200)) * (0.7 + layer * 0.25), 8.0)
-		var x0 := snappedf(i * slot - scroll, 4.0)
-		var top := y_base - bh
-		draw_rect(Rect2(x0, top, w, vp.y - top + 400), col)
-		# Roof details: a step, a mast or a water tank.
-		match h % 5:
-			0:
-				draw_rect(Rect2(x0 + 8, top - 16, w * 0.4, 16), col)
-			1:
-				draw_rect(Rect2(x0 + w * 0.5, top - 40, 4, 40), col)
-				if layer == 3 and int(time * 1.5 + i) % 3 == 0:
-					draw_rect(Rect2(x0 + w * 0.5 - 4, top - 44, 8, 4), Color("ff4d5e"))
-			2:
-				draw_rect(Rect2(x0 + w - 32, top - 24, 20, 16), col)
-				draw_rect(Rect2(x0 + w - 28, top - 8, 4, 8), col)
-				draw_rect(Rect2(x0 + w - 20, top - 8, 4, 8), col)
-		# Lit windows.
-		var cols := int(w / 16.0)
-		var rows := int(bh / 20.0)
-		for ry in rows:
-			for rx in cols:
-				var wh := Art.hash3(i, rx * 31 + ry, layer)
-				if float(wh % 100) / 100.0 < lights * 0.35:
-					var wc: Color = Art.WINDOW_ON[wh % 3]
-					wc.a = 0.2 + 0.12 * layer
-					draw_rect(Rect2(x0 + 6 + rx * 16, top + 12 + ry * 20, 4, 4 + layer * 2), wc)
+## Tiles a 1280x720 layer across the screen, scrolled by sx, moved down by oy,
+## and fills above and below it with its edge colours.
+func _draw_layer(tex: Texture2D, vp: Vector2, sx: float, oy: float, tint: Color) -> void:
+	var w := float(tex.get_width())
+	var h := float(tex.get_height())
+	var top := roundf(oy + vp.y - h)  # bottom-aligned to the screen
+	var fill := _layer_fill(tex)
+	if top > 0.0 and fill[0].a > 0.5:
+		draw_rect(Rect2(0, 0, vp.x, top), fill[0] * tint)
+	var x := -fposmod(roundf(sx), w)
+	while x < vp.x:
+		draw_texture(tex, Vector2(x, top), tint)
+		x += w
+	if top + h < vp.y:
+		draw_rect(Rect2(0, top + h, vp.x, vp.y - top - h), fill[1] * tint)
 
 
 ## Where the camera sits when the runner is on the first roof, so the
@@ -452,106 +432,118 @@ func _cam_rest() -> float:
 	return -get_viewport_rect().size.y * 0.6
 
 
+## Draws one horizontal strip of a roof from x0 to x1: the left-end tile,
+## middle tiles, and the right-end tile, using source rows sy..sy+sh.
+func _roof_strip(x0: float, x1: float, y: float, sy: float, sh: float, mid_col: int,
+		tint := Color.WHITE) -> void:
+	_tint = tint
+	var tw := TILE * S
+	var w := x1 - x0
+	var h := sh * S
+	if w < tw * 2.0:
+		var half := roundf(w * 0.5 / S) * S
+		_tile(Rect2(x0, y, half, h), Rect2(0, sy, half / S, sh))
+		_tile(Rect2(x0 + half, y, w - half, h), Rect2(2 * TILE + TILE - (w - half) / S, sy, (w - half) / S, sh))
+		return
+	_tile(Rect2(x0, y, tw, h), Rect2(0, sy, TILE, sh))
+	var x := x0 + tw
+	while x < x1 - tw:
+		var part := minf(tw, x1 - tw - x)
+		_tile(Rect2(x, y, part, h), Rect2(mid_col * TILE, sy, part / S, sh))
+		x += part
+	_tile(Rect2(x1 - tw, y, tw, h), Rect2(2 * TILE, sy, TILE, sh))
+
+
+var _tint := Color.WHITE
+
+
+func _tile(dst: Rect2, src: Rect2) -> void:
+	draw_texture_rect_region(TILES, dst, src, _tint)
+
+
 func _draw_roof(r: Dictionary, c: Vector2, vp: Vector2) -> void:
-	var y := snappedf(r.y, 4.0)
+	var y := roundf(r.y / S) * S
 	if r.crumble and r.t >= 0.0 and r.vy == 0.0:
-		y += snappedf(randf_range(-4, 4), 4.0)
+		y += S * float(randi_range(-1, 1))
 	var x0: float = r.x0
-	var w: float = r.x1 - r.x0
+	var x1: float = r.x1
 	var bottom := c.y + vp.y + 8.0
-	var h := Art.hash3(r.id, 5)
-	var body: Color = Art.BODY[h % 3]
-	draw_rect(Rect2(x0, y, w, bottom - y), body)
-	# A lit front face on the left and a shaded side on the right, so every
-	# gap has a clear wall on both sides.
-	draw_rect(Rect2(x0, y, 8, bottom - y), Art.FACE)
-	draw_rect(Rect2(x0 + w - 8, y, 8, bottom - y), body.darkened(0.4))
-	# Windows: a grid, some lit orange.
-	var cols := int((w - 24) / 32.0)
-	var y_win := y + 44.0
+	var mid := 3 if r.crumble else 1
+	# Crumbling roofs are cracked and a little rust-red, so they read early.
+	var tint := Color(1.25, 0.82, 0.8) if r.crumble else Color.WHITE
+	# The roof itself: coping, slab and the first row of facade.
+	_roof_strip(x0, x1, y, ROOF_TOP, TILE - ROOF_TOP, mid, tint)
+	# More facade below, band after band, down past the bottom of the screen.
+	var band := (TILE - FACADE_Y) * S
+	var yy := y + (TILE - ROOF_TOP) * S
 	var row := 0
-	while y_win < bottom:
-		for cx in cols:
-			var wh := Art.hash3(r.id, cx, row)
-			var lit := wh % 100 < 34
-			var wc: Color = Art.WINDOW_ON[wh % 3] if lit else Art.WINDOW_OFF
-			draw_rect(Rect2(x0 + 16 + cx * 32, y_win, 12, 16), wc)
-			if lit and wh % 7 == 0:
-				draw_rect(Rect2(x0 + 16 + cx * 32, y_win + 8, 12, 4), wc.darkened(0.4))
-		y_win += 52.0
+	while yy < bottom:
+		_roof_strip(x0, x1, yy, FACADE_Y, TILE - FACADE_Y, 3 if r.crumble and row == 0 else 1, tint)
+		yy += band
 		row += 1
-	# The parapet along the top.
-	if r.crumble:
-		draw_rect(Rect2(x0 - 4, y - 4, w + 8, 12), Art.BRICK)
-		draw_rect(Rect2(x0 - 4, y - 4, w + 8, 4), Art.BRICK.lightened(0.25))
-		for i in range(0, int(w), 24):
-			var ch := Art.hash3(r.id, i)
-			draw_rect(Rect2(x0 + i + (ch % 3) * 4, y, 4, 8), Color("2a1a26"))
-			draw_rect(Rect2(x0 + i + 4 + (ch % 3) * 4, y + 4, 4, 8), Color("2a1a26"))
-	else:
-		draw_rect(Rect2(x0 - 4, y - 4, w + 8, 12), Art.LIP)
-		draw_rect(Rect2(x0 - 4, y - 4, w + 8, 4), Art.LIP_HI)
-		draw_rect(Rect2(x0 - 4, y + 8, w + 8, 4), Color(0, 0, 0, 0.35))
-	# The front edge glows a little: that's where edge landings score.
-	draw_rect(Rect2(x0 - 4, y - 4, 8, 4), Art.ORANGE.lerp(Art.LIP_HI, 0.5 + 0.5 * sin(time * 5.0)))
 
 
 func _draw_obstacle(o: Dictionary) -> void:
-	var x0: float = o.x0
-	var y0: float = o.y0
-	var w: float = o.x1 - o.x0
-	var h: float = o.y1 - o.y0
 	if o.kind == "ac":
-		draw_rect(Rect2(x0, y0, w, h), Art.STEEL_DARK)
-		draw_rect(Rect2(x0 + 4, y0 + 4, w - 8, h - 8), Art.STEEL)
-		draw_rect(Rect2(x0, y0, w, 4), Art.WIRE)
-		# The fan, spinning.
-		var fc := Vector2(x0 + w * 0.38, y0 + h * 0.5)
-		for yy in range(-3, 4):
-			for xx in range(-3, 4):
-				if xx * xx + yy * yy <= 10:
-					draw_rect(Rect2(fc.x + xx * 4 - 2, fc.y + yy * 4 - 2, 4, 4), Art.STEEL_DARK)
-		var a := time * 14.0
-		for k in 2:
-			var d := Vector2(cos(a + k * PI * 0.5), sin(a + k * PI * 0.5)) * 8.0
-			draw_rect(Rect2((fc + d).snapped(Vector2(4, 4)) - Vector2(2, 2), Vector2(4, 4)), Art.STEEL)
-			draw_rect(Rect2((fc - d).snapped(Vector2(4, 4)) - Vector2(2, 2), Vector2(4, 4)), Art.STEEL)
-		for i in 3:
-			draw_rect(Rect2(x0 + w - 20, y0 + 12 + i * 8, 12, 4), Art.STEEL_DARK)
-	else:
-		draw_rect(Rect2(x0 - 8, o.y1 - 8, w + 16, 8), Art.STEEL_DARK)
-		draw_rect(Rect2(x0, y0, w, h), Art.STEEL_DARK)
-		draw_rect(Rect2(x0, y0, 4, h), Art.STEEL)
-		for i in 3:
-			var by := y0 + 24 + i * 36
-			var bw := 28 - i * 6
-			draw_rect(Rect2(x0 + w * 0.5 - bw * 0.5, by, bw, 4), Art.STEEL)
-		var on := int(time * 2.0) % 2 == 0
-		draw_rect(Rect2(x0 - 2, y0 - 8, w + 4, 8), Color("ff4d5e") if on else Color("7a2030"))
-		if on:
-			draw_rect(Rect2(x0 - 6, y0 - 12, w + 12, 16), Color(1, 0.3, 0.37, 0.25))
+		# Cell (0, 64); the unit itself spans x 12-51, y 28-59 in the cell.
+		draw_texture_rect_region(TILES, Rect2(o.x0 - 12 * S, o.y1 - 59 * S, TILE * S, TILE * S),
+			Rect2(0, TILE, TILE, TILE))
+		return
+	# The antenna is stretched to its full height by repeating a stretch of
+	# plain pole: mast and crossbars on top, lattice and base at the bottom.
+	var cx: float = (o.x0 + o.x1) * 0.5
+	var sx := TILE + 16.0          # cell x 16..48 holds the antenna
+	var w := 32.0 * S
+	var x := roundf(cx / S) * S - 16.0 * S
+	var top_h := 15.0             # rows 4-19
+	var base_h := 35.0            # rows 24-59
+	var y0: float = o.y0
+	var y1: float = o.y1
+	# Brightened a little so the thin mast stands out against the night sky.
+	var lift := Color(1.45, 1.45, 1.6)
+	draw_texture_rect_region(TILES, Rect2(x, y0, w, top_h * S), Rect2(sx, TILE + 4, 32, top_h), lift)
+	var yy := y0 + top_h * S
+	var pole_end := y1 - base_h * S
+	while yy < pole_end:
+		var part := minf(5.0 * S, pole_end - yy)
+		draw_texture_rect_region(TILES, Rect2(x, yy, w, part), Rect2(sx, TILE + 19, 32, part / S), lift)
+		yy += part
+	draw_texture_rect_region(TILES, Rect2(x, pole_end, w, base_h * S), Rect2(sx, TILE + 24, 32, base_h), lift)
+	if int(time * 2.0) % 2 == 0:
+		draw_rect(Rect2(cx - 10, y0 - 6, 20, 20), Color(1, 0.55, 0.2, 0.3))
+
+
+func _draw_parcel(p: Dictionary) -> void:
+	var bob := roundf(sin(time * 4.0 + p.x * 0.01) * 2.0) * S
+	# Cell (192, 64); the box is centred at (32, 50) in the cell.
+	draw_texture_rect_region(TILES, Rect2(roundf(p.x) - 32 * S, roundf(p.y) - 50 * S + bob, TILE * S, TILE * S),
+		Rect2(3 * TILE, TILE, TILE, TILE))
 
 
 func _draw_wire_posts(w: Dictionary) -> void:
 	for p in [Vector2(w.ax, w.ay), Vector2(w.bx, w.by)]:
-		var top := snappedf(p.y, 4.0)
-		draw_rect(Rect2(p.x - 4, top, 8, World.WIRE_HIGH), Art.STEEL_DARK)
-		draw_rect(Rect2(p.x - 12, top + 8, 24, 4), Art.STEEL_DARK)
+		var top := roundf(p.y)
+		draw_rect(Rect2(p.x - 4, top, 8, World.WIRE_HIGH), WIRE_DARK)
+		draw_rect(Rect2(p.x - 4, top, 2, World.WIRE_HIGH), WIRE_EDGE.darkened(0.3))
+		draw_rect(Rect2(p.x - 12, top + 6, 24, 6), WIRE_DARK)
+		draw_rect(Rect2(p.x - 12, top + 6, 24, 2), WIRE_EDGE)
 
 
 func _draw_wire(w: Dictionary) -> void:
-	var pts := World.wire_points(w, int((w.bx - w.ax) / 4.0))
+	var pts := World.wire_points(w, int((w.bx - w.ax) / S))
 	for p in pts:
-		draw_rect(Rect2(p.snapped(Vector2(4, 4)) - Vector2(2, 2), Vector2(4, 4)), Art.WIRE)
+		var q := (p / S).round() * S
+		draw_rect(Rect2(q - Vector2(1, 2), Vector2(S, S * 2.0)), WIRE_DARK)
+		draw_rect(Rect2(q - Vector2(1, 2), Vector2(S, S)), WIRE_EDGE)
 	# A spark runs along it now and then, so it catches the eye.
 	var k := fmod(time * 0.8 + w.ax * 0.001, 1.6)
 	if k < 1.0:
 		var i := int(k * (pts.size() - 1))
-		draw_rect(Rect2(pts[i].snapped(Vector2(4, 4)) - Vector2(4, 4), Vector2(8, 8)), Art.GOLD)
+		draw_rect(Rect2((pts[i] / S).round() * S - Vector2(4, 4), Vector2(8, 8)), Art.GOLD)
 
 
 ## The courier sheet: 9 frames of 64x64 in a row (run 1-6, jump up, fall,
-## landing squash), drawn 1:1 with the feet 58 px down each frame.
+## landing squash), drawn at 2x with the feet 58 px down each frame.
 const COURIER: Texture2D = preload("res://sprites/courier.png")
 const FRAME := 64.0
 const FEET := 58.0
@@ -576,14 +568,15 @@ func _runner_frame() -> int:
 
 func _draw_runner(c: Vector2) -> void:
 	var src := Rect2(_runner_frame() * FRAME, 0, FRAME, FRAME)
-	var pos := Vector2(roundf(world.x - FRAME * 0.5), roundf(world.y - FEET))
+	var size := Vector2(FRAME, FRAME) * S
+	var pos := (Vector2(world.x - FRAME * 0.5 * S, world.y - FEET * S) / S).round() * S
 	if not world.alive and world.death != "fall":
 		# Tumble backwards after a hit.
-		draw_set_transform(-c + pos + Vector2(32, 32), -over_t * 9.0)
-		draw_texture_rect_region(COURIER, Rect2(-32, -32, FRAME, FRAME), src)
+		draw_set_transform(-c + pos + size * 0.5, -over_t * 9.0)
+		draw_texture_rect_region(COURIER, Rect2(-size * 0.5, size), src)
 		draw_set_transform(-c)
 		return
-	draw_texture_rect_region(COURIER, Rect2(pos, Vector2(FRAME, FRAME)), src)
+	draw_texture_rect_region(COURIER, Rect2(pos, size), src)
 
 
 func _draw_best_flag(vp: Vector2, c: Vector2) -> void:
