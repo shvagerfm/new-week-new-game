@@ -34,19 +34,27 @@ const WIRE_HIGH := 370.0
 const WIRE_SAG := 30.0
 const AC_SIZE := Vector2(78, 62)   # the art at 2x
 const ANTENNA_SIZE := Vector2(12, 150)  # the pole; the art is drawn around it
-## Bats hover just above head height: run under them, a jump hits them.
-const BAT_SIZE := Vector2(44, 30)
-const BAT_GAP := 26.0
-## Laundry hangs on a line across a roof, down to just above the head.
-const LAUNDRY_LINE := 200.0
-const LAUNDRY_GAP := 22.0
-## Kinds that are passed by running under them, not by jumping.
-const DUCK := ["bat", "laundry"]
+# --- Puzzle points ---------------------------------------------------------
+## A bat hovers over a gap too wide for any jump. Jump into it and it carries
+## you across. Two big (but jumpable) gaps come first, so the third looks like
+## more of the same.
+const BAT_GRAB := Vector2(70, 56)
+const BAT_HIGH := 200.0       # bat centre above the roof
+const BAT_GAP_X := 1.4        # the gap, in hold-jump reaches (plus 60 px)
+## Laundry hangs in front of a wall too tall to jump, over a steam vent.
+## Jump into it and the sheet catches the steam like a parachute.
+const WALL_RISE := 340.0      # the wall, above the roof in front of it
+const LAUNDRY_LINE := 200.0   # the line, above the roof
+const LAUNDRY_LOW := 126.0    # the bottom of the clothes, above the roof
+const STEAM_SLOW := 0.6       # forward speed while rising in the steam
+const PUZZLE_POINTS := 50     # for finding the trick
 
 var rng := RandomNumberGenerator.new()
 ## {id, x0, x1, y, base, crumble, t, vy}. t is -1 until a crumbling roof is touched.
 var roofs: Array = []
-## {kind ("ac", "antenna", "skylight", "bat" or "laundry"), x0, x1, y0, y1, roof}
+## {kind ("ac", "antenna", "skylight", "bat" or "laundry"), x0, x1, y0, y1, roof}.
+## Bats and laundry are puzzle points: "grab" is true, and tx, ty say where
+## they carry the courier.
 var obstacles: Array = []
 ## {ax, ay, bx, by}: hangs from a to b with WIRE_SAG in the middle.
 var wires: Array = []
@@ -78,6 +86,11 @@ var parcels_taken := 0
 var best_mult := 1        # the highest multiplier reached this run
 var last_roof := -1
 var ref_y := 0.0          # top of the last roof stood on, for falling out
+## While a bat or the steam carries the courier: {kind, x0, y0, x1, y1, rise_x, arc, slow}.
+var carry := {}
+var carries := 0          # puzzle points solved this run
+var next_piece_m := 230.0 # no puzzle point before this distance
+var no_grab: Array = []   # tests turn kinds off here to prove the tricks are needed
 
 
 func _init(seed_value := 0, fresh := true) -> void:
@@ -198,6 +211,13 @@ func step(held: bool, tapped := false) -> Array:
 	was_held = held
 	buffer_t = 0.0 if pressed else buffer_t + DT
 
+	if not carry.is_empty():
+		buffer_t = 99.0
+		_step_carry(ev)
+		_collect(ev)
+		_ensure_generated()
+		return ev
+
 	if buffer_t <= BUFFER and (grounded or (air_t <= COYOTE and not jumped)):
 		vy = JUMP_V
 		grounded = false
@@ -240,6 +260,24 @@ func step(held: bool, tapped := false) -> Array:
 		_die("fall", ev)
 	_ensure_generated()
 	return ev
+
+
+## Moves along the bat's or the steam's path; no gravity, no collisions.
+func _step_carry(ev: Array) -> void:
+	x += speed() * DT * carry.slow
+	var k := clampf((x - carry.x0) / (carry.rise_x - carry.x0), 0.0, 1.0)
+	var arc: float = carry.arc * sin(PI * clampf((x - carry.x0) / (carry.x1 - carry.x0), 0.0, 1.0))
+	var ny: float = lerpf(carry.y0, carry.y1, smoothstep(0.0, 1.0, k)) - arc
+	vy = (ny - y) / DT
+	y = ny
+	if x >= carry.x1:
+		ev.append({"type": "release", "kind": carry.kind})
+		carry = {}
+		vy = 0.0
+		air_t = 0.0
+		jumped = true
+		hold_jump = false
+		ref_y = maxf(ref_y, y)
 
 
 func _support_at(s: Dictionary) -> bool:
@@ -297,6 +335,18 @@ func _collide(px: float, ev: Array) -> void:
 			_die("wall", ev)
 			return
 	for o in obstacles:
+		if o.get("grab", false):
+			if not o.kind in no_grab and not grounded and not o.used and body.intersects(Rect2(o.x0, o.y0, o.x1 - o.x0, o.y1 - o.y0)):
+				o.used = true
+				carries += 1
+				var pts := PUZZLE_POINTS * multiplier()
+				bonus += pts
+				carry = {"kind": o.kind, "x0": x, "y0": y, "x1": o.tx, "y1": o.ty,
+					"rise_x": o.rise_x, "arc": o.arc, "slow": o.slow}
+				hold_jump = false
+				ev.append({"type": "grab", "kind": o.kind, "points": pts})
+				return
+			continue
 		if o.kind == "skylight":
 			# Glass in the roof: running onto it (feet over the pane) breaks it.
 			if grounded and ground.get("id", -1) == o.roof and x > o.x0 + 6.0 and x < o.x1 - 6.0:
@@ -396,6 +446,17 @@ func _gen_roof() -> void:
 		dy *= 0.4
 	dy = snappedf(dy, 8.0)
 
+	if not prev.crumble and m > next_piece_m and rng.randf() < 0.35:
+		var steam := m > 450.0 and rng.randf() < 0.5
+		if steam and prev.base - WALL_RISE < -520.0:
+			steam = false
+		if steam:
+			_gen_steam(prev, v)
+		else:
+			_gen_bat(prev, v)
+		next_piece_m = m + rng.randf_range(350.0, 600.0)
+		return
+
 	var launch: float = prev.x1
 	if prev.crumble:
 		launch = prev.x0 + v * (CRUMBLE_DELAY + 0.1)
@@ -437,47 +498,21 @@ func _gen_obstacles(r: Dictionary, v: float, m: float, d: float) -> void:
 	var flat_hold := reach(v, 0.0, true)
 	var cursor: float = r.x0 + v * 0.65
 	var placed := false
-	var ducked := false   # the last thing placed is run under, not jumped
 	while m > 60.0 and rng.randf() < lerpf(0.5, 0.85, d):
 		var kind := _pick_kind(m)
-		var duck: bool = kind in DUCK
-		# A run-under obstacle must not sit where the last jump comes down.
-		var start := cursor + (flat_hold * 0.3 if duck and placed and not ducked else 0.0)
-		var size: Vector2 = {"ac": AC_SIZE, "antenna": ANTENNA_SIZE, "bat": BAT_SIZE}.get(kind, Vector2.ZERO)
+		var size: Vector2 = {"ac": AC_SIZE, "antenna": ANTENNA_SIZE}.get(kind, Vector2.ZERO)
 		if kind == "skylight":
 			size = Vector2(snappedf(rng.randf_range(0.3, lerpf(0.45, 0.6, d)) * flat_tap, 8.0), 8.0)
-		elif kind == "laundry":
-			size = Vector2(snappedf(rng.randf_range(160.0, 280.0), 8.0), LAUNDRY_LINE - HEIGHT - LAUNDRY_GAP)
-		# After a jump-over, a jump from right before it must land back on this
-		# roof; after a run-under, there must be room to run off and jump.
-		var after: float = flat_tap * 0.95
-		if kind == "antenna":
-			after = flat_hold * 0.85
-		elif duck:
-			after = v * 0.3 + HALF_W
-		var room: float = r.x1 - after - size.x - start
+		# A jump from right before it must land back on this roof.
+		var room: float = r.x1 - (flat_hold * 0.85 if kind == "antenna" else flat_tap * 0.95) - size.x - cursor
 		if room < 0.0:
 			break
-		var ox := snappedf(start + rng.randf() * minf(room, v * 0.8), 4.0)
-		var o := {"kind": kind, "x0": ox, "x1": ox + size.x, "y0": r.y - size.y, "y1": r.y, "roof": r.id}
-		if kind == "bat":
-			o.y1 = r.y - HEIGHT - BAT_GAP
-			o.y0 = o.y1 - size.y
-		elif kind == "laundry":
-			o.y0 = r.y - LAUNDRY_LINE
-			o.y1 = r.y - HEIGHT - LAUNDRY_GAP
-		obstacles.append(o)
+		var ox := snappedf(cursor + rng.randf() * minf(room, v * 0.8), 4.0)
+		obstacles.append({"kind": kind, "x0": ox, "x1": ox + size.x, "y0": r.y - size.y, "y1": r.y, "roof": r.id})
 		placed = true
-		ducked = duck
 		if kind == "antenna" and rng.randf() < 0.5:
 			parcels.append({"x": ox + size.x * 0.5, "y": r.y - size.y - 40.0, "taken": false})
-		elif duck and rng.randf() < 0.4:
-			# A parcel at running height under it, as a reward for not jumping.
-			parcels.append({"x": ox + size.x * 0.5, "y": r.y - 44.0, "taken": false})
-		if duck:
-			cursor = ox + size.x + v * 0.35
-		else:
-			cursor = ox + size.x + maxf(flat_tap, flat_hold * 0.8) + v * 0.35
+		cursor = ox + size.x + maxf(flat_tap, flat_hold * 0.8) + v * 0.35
 	if not placed and m > 10.0 and rng.randf() < 0.3:
 		var px: float = r.x0 + v * 0.5
 		for i in 3:
@@ -490,12 +525,8 @@ func _pick_kind(m: float) -> String:
 	var kinds := {"ac": 3.0}
 	if m > 150.0:
 		kinds["skylight"] = 2.0
-	if m > 220.0:
-		kinds["bat"] = 2.0
 	if m > 350.0:
 		kinds["antenna"] = 1.6
-	if m > 420.0:
-		kinds["laundry"] = 1.6
 	var total := 0.0
 	for k in kinds:
 		total += kinds[k]
@@ -505,6 +536,44 @@ func _pick_kind(m: float) -> String:
 		if pick <= 0.0:
 			return k
 	return "ac"
+
+
+# --- Puzzle points ---------------------------------------------------------
+
+## Two big gaps that a full hold just clears, then one that nothing clears,
+## with a bat hovering over its near side. Parcels trail along the bat's path.
+func _gen_bat(prev: Dictionary, v: float) -> void:
+	var r := prev
+	for i in 2:
+		var gap := (reach(v, 0.0, true) - 12.0) * rng.randf_range(0.84, 0.9)
+		var x0: float = r.x1 + gap
+		r = _add_roof(x0, x0 + v * rng.randf_range(1.0, 1.3), r.base, false)
+	var far: float = r.x1 + reach(v, 40.0, true) * BAT_GAP_X + 60.0
+	var land := _add_roof(far, far + v * 2.2, r.base + 40.0, false)
+	var bx: float = r.x1 + v * 0.25
+	var by: float = r.y - BAT_HIGH
+	var tx: float = land.x0 + 110.0
+	var ty: float = land.y - 30.0
+	obstacles.append({"kind": "bat", "grab": true, "used": false, "roof": r.id,
+		"x0": bx - BAT_GRAB.x * 0.5, "x1": bx + BAT_GRAB.x * 0.5,
+		"y0": by - BAT_GRAB.y * 0.5, "y1": by + BAT_GRAB.y * 0.5,
+		"tx": tx, "ty": ty, "rise_x": tx, "arc": 70.0, "slow": 1.0})
+	for k in [0.35, 0.55, 0.75]:
+		var px := lerpf(bx, tx, k)
+		parcels.append({"x": px, "y": lerpf(by + 40.0, ty - 50.0, k) - 70.0 * sin(PI * k), "taken": false})
+
+
+## A plain roof that ends at a wall too tall to jump. Laundry hangs in front
+## of it over a steam vent: jump into the laundry and the steam lifts you up.
+func _gen_steam(prev: Dictionary, v: float) -> void:
+	var x0: float = prev.x1 + reach(v, 0.0, false) * 0.5
+	var a := _add_roof(x0, x0 + v * 2.6, prev.base, false)
+	var b := _add_roof(a.x1, a.x1 + v * 2.2, a.base - WALL_RISE, false)
+	obstacles.append({"kind": "laundry", "grab": true, "used": false, "roof": a.id,
+		"x0": a.x1 - v * 0.95, "x1": a.x1 - v * 0.5,
+		"y0": a.y - LAUNDRY_LINE, "y1": a.y - LAUNDRY_LOW,
+		"tx": b.x0 + 120.0, "ty": b.y - 30.0, "rise_x": b.x0 - 16.0, "arc": 0.0, "slow": STEAM_SLOW,
+		"vent": a.x1 - 40.0})
 
 
 # --- Copies for the test bot ----------------------------------------------
@@ -524,6 +593,7 @@ func clone() -> World:
 			w.ground = s
 	for k in ["next_id", "x", "y", "vy", "grounded", "air_t", "jumped", "buffer_t", "hold_t",
 			"hold_jump", "was_held", "alive", "death", "dead_vx", "started", "t", "start_x",
-			"bonus", "combo", "best_mult", "parcels_taken", "last_roof", "ref_y"]:
+			"bonus", "combo", "best_mult", "parcels_taken", "last_roof", "ref_y",
+			"carry", "carries", "next_piece_m", "no_grab"]:
 		w.set(k, get(k))
 	return w

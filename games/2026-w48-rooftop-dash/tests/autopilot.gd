@@ -6,13 +6,15 @@ extends RefCounted
 ## Hold lengths it tries, in ticks (0 is a tap). Full hold first.
 const HOLDS := [15, 0, 7, 3, 11]
 const STEP := 3  # ticks between launch points it tries
-const MAX_TRIES := 30000
+var max_tries := 30000
 
 var tried := 0
 var best := 0.0
 ## [tick, hold] per jump, in order; tick counts World steps since start().
 var plan: Array = []
 var stats := {"ac": 0, "antenna": 0, "skylight": 0, "bat": 0, "laundry": 0, "wire": 0, "crumble": 0}
+## Puzzle points solved: the bat and the steam lift.
+var rides := {"bat": 0, "laundry": 0}
 var _seen := {}
 ## Prefer launches this many ticks before the last safe one, like a person
 ## who doesn't wait for the very edge. 0 jumps as late as possible.
@@ -41,7 +43,7 @@ func _ticks(w: World) -> int:
 func _run(w: World, goal: float) -> bool:
 	if w.meters() >= goal:
 		return true
-	if tried > MAX_TRIES:
+	if tried > max_tries:
 		return false
 	var key := "%d:%d" % [int(w.x / 24.0), int(w.y)]
 	if _seen.has(key):
@@ -87,6 +89,8 @@ func _count(from: World, to: World) -> void:
 	for o in to.obstacles:
 		if o.x0 > from.x and o.x0 <= to.x:
 			stats[o.kind] += 1
+			if o.get("grab", false) and o.used:
+				rides[o.kind] += 1
 	for wr in to.wires:
 		if wr.ax > from.x - 20.0 and wr.ax <= to.x:
 			stats.wire += 1

@@ -26,16 +26,17 @@ The game also pauses when the window or tab loses focus.
 ## How a run works
 
 - **Speed** starts at 400 px/s and climbs toward 800 px/s (about 540 px/s at 250 m, 620 at 500 m, 720 at 1000 m). Gaps get wider with it, roofs get shorter, and obstacles show up more often (difficulty is full at 1200 m).
-- **Edge landings.** Landing within 40 px of a roof's front edge raises the multiplier (up to ×5) and gives 10 × multiplier points. A normal landing on a new roof resets it.
-- **Parcels** give 25 × multiplier. Parcels picked up close together play rising notes of a scale. Some sit at running height under bats and laundry, a reward for not jumping. They hang at the top of a full jump over a gap, above antennas, or in rows on roofs.
+- **Edge landings.** Landing within 40 px of a roof's front edge raises the multiplier (up to ×5) and gives 10 × multiplier points. A normal landing on a new roof resets it. The edge zone of each roof ahead glows gold with small chevrons.
+- **Parcels** give 25 × multiplier. Parcels picked up close together play rising notes of a scale. They hang at the top of a full jump over a gap, above antennas, or in rows on roofs.
 - **Obstacles**
   - Air conditioner: jump over it or land on top.
   - Antenna (150 px): a well-timed tap clears it, a hold is safer.
   - Skylight (from 150 m): glass in the roof. Running onto it breaks it, so jump over.
-  - Bat (from 220 m): hovers just above head height. Run under it; any jump hits it.
-  - Laundry line (from 420 m): clothes hang down to just above your head. Run under; don't jump.
   - Wire across a gap: a tap passes under, a held jump hits it.
   - Crumbling roof (cracked, rust-tinted): it gives way a quarter second after you land, so jump off quickly.
+- **Puzzle points** (secret tricks, 50 × multiplier each, from 230 m, one every 350 to 600 m)
+  - Bat ride: two wide gaps you can just clear, then a third one step wider than any jump, with a bat hovering above its edge. Jump into the bat and the courier grabs it and is carried across.
+  - Steam lift (from 450 m): a wall far too tall to jump, with steam rising from a pipe at its foot and laundry hanging before it. Jump into the laundry and the sheet catches the steam like a parachute and lifts you onto the wall.
 - **Score** is metres plus bonus points. The best score and the best distance are saved. A flag marks the best distance on the roofs, and a line counts down the last 100 m to it.
 
 ## Screens
@@ -48,7 +49,7 @@ The game also pauses when the window or tab loses focus.
 
 Every sound is synthesized by `sfx/make_sfx.py`, so a recipe change is one script run away.
 
-- **Effects:** jump, landing (louder after a long drop), a quiet footstep each stride, edge chime (pitched up with the multiplier), combo lost, parcel, crumble creak, roof collapse, new best, and a death sound for each cause: a knock for walls and AC units, a clang for antennas, a zap for wires, a squeak for bats, a cloth flap for laundry, breaking glass for skylights and a whistle for falls. The parcel sound is a soft bloop into a bell.
+- **Effects:** jump, landing (louder after a long drop), a quiet footstep each stride, edge chime (pitched up with the multiplier), combo lost, parcel, crumble creak, roof collapse, new best, and a death sound for each cause: a knock for walls and AC units, a clang for antennas, a zap for wires, breaking glass for skylights and a whistle for falls. Grabbing the bat squeaks; grabbing the laundry flaps. The parcel sound is a soft bloop into a bell.
 - **Music:** an 8-bar loop at 128 bpm in three stems. The base (bass, kick, pad) plays from the first step. The drums fade in from 6% to 22% of the speed ramp (about 40-150 m), and the lead (arpeggio and a hook) from 30% to 50% (about 210-420 m). The loop also plays up to 12% faster at top speed. On death it slows and fades out.
 - **Mute:** the speaker button or M. The setting is saved.
 - **Web:** browsers keep audio locked until the first tap, click or key, and that same press starts the run and the music.
@@ -82,6 +83,10 @@ The generator only places a gap if a jump from the edge covers it with room to s
 # A bot searches for button presses that survive the first 2500 m of 20 seeds.
 # A failure means the generator made an unfair jump.
 godot --headless --path . --script tests/bot.gd -- --seeds=20 --meters=2500
+
+# Puzzle points need their trick: with the bat (or the laundry) switched off,
+# the bot must get stuck at the first one.
+godot --headless --path . --script tests/puzzle_check.gd
 
 # Touch input: a second thumb and a tap shorter than a frame both jump.
 godot --headless --path . --script tests/input_check.gd
