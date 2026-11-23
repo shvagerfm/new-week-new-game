@@ -34,7 +34,7 @@ The game also pauses when the window or tab loses focus. After a fall, a tap res
 | `main.gd` | Input, camera, drawing, effects, screens, HUD, saving |
 | `sprites/courier.png` | The courier: 9 frames of 64×64 (run 1-6, jump up, fall, landing squash), feet at y = 58 |
 | `sprites/rooftop.png` | 4×2 atlas of 64×64 cells: roof left, middle, right, cracked; AC unit, antenna, wire, parcel. The roof surface is at y = 26 |
-| `sprites/skyline-*.png` | Far, middle and near parallax layers, 1280×720, wrapping |
+| `sprites/skyline-*.png` | Far, middle and near parallax layers, wrapping. 1280×720 is drawn 1:1; 640×360 is drawn at 2x |
 
 The gameplay layer (courier, roofs, obstacles, parcels) is drawn at 2x; the skylines are already screen-sized and drawn 1:1. Roofs are built from the left, middle and right tiles, and the facade rows of the tiles repeat down to the street. The antenna is stretched to its 200 px height by repeating a stretch of its pole.
 | `art.gd` | Palette for the HUD and effects, plus the old string sprites used by `art/make_icon.py` |

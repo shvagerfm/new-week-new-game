@@ -409,18 +409,20 @@ func _draw_sky(vp: Vector2, c: Vector2) -> void:
 		draw_rect(Rect2(0, deep + i * 24, vp.x, vp.y), Color(0.01, 0.015, 0.05, 0.14))
 
 
-## Tiles a 1280x720 layer across the screen, scrolled by sx, moved down by oy,
-## and fills above and below it with its edge colours.
+## Tiles a skyline layer across the screen, scrolled by sx, moved down by oy,
+## and fills above and below it with its edge colours. A layer is painted for
+## a 720 px tall screen: a 1280x720 one is drawn 1:1, a 640x360 one at 2x.
 func _draw_layer(tex: Texture2D, vp: Vector2, sx: float, oy: float, tint: Color) -> void:
-	var w := float(tex.get_width())
-	var h := float(tex.get_height())
-	var top := roundf(oy + vp.y - h)  # bottom-aligned to the screen
+	var k := roundf(720.0 / tex.get_height())
+	var w := tex.get_width() * k
+	var h := tex.get_height() * k
+	var top := roundf((oy + vp.y - h) / k) * k  # bottom-aligned to the screen
 	var fill := _layer_fill(tex)
 	if top > 0.0 and fill[0].a > 0.5:
 		draw_rect(Rect2(0, 0, vp.x, top), fill[0] * tint)
-	var x := -fposmod(roundf(sx), w)
+	var x := -fposmod(roundf(sx / k) * k, w)
 	while x < vp.x:
-		draw_texture(tex, Vector2(x, top), tint)
+		draw_texture_rect(tex, Rect2(x, top, w, h), false, tint)
 		x += w
 	if top + h < vp.y:
 		draw_rect(Rect2(0, top + h, vp.x, vp.y - top - h), fill[1] * tint)
