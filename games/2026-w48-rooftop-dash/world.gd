@@ -11,13 +11,13 @@ const JUMP_V := -1000.0
 const HOLD_GRAVITY := 0.42
 const HOLD_MAX := 0.24
 const MAX_FALL := 1900.0
-const COYOTE := 0.08       # a jump still works this long after running off an edge
-const BUFFER := 0.12       # a press this early before landing still jumps
+const COYOTE := 0.10       # a jump still works this long after running off an edge
+const BUFFER := 0.15       # a press this early before landing still jumps
 const HALF_W := 22.0
 const HEIGHT := 96.0  # matches the courier sprite at 2x, cap to shoes
 const SPEED_START := 400.0
 const SPEED_MAX := 800.0
-const SPEED_RAMP := 40000.0  # px; by here the speed is 63% of the way to max
+const SPEED_RAMP := 30000.0  # px; by here the speed is 63% of the way to max
 const PX_PER_M := 50.0
 ## Landing this close to a roof's front edge counts as an edge landing.
 const EDGE_ZONE := 40.0
@@ -30,7 +30,7 @@ const AHEAD := 3200.0
 const BEHIND := 1400.0
 ## Wires hang this high over the roof they start from: a tap passes under,
 ## a held jump hits them.
-const WIRE_HIGH := 350.0
+const WIRE_HIGH := 370.0
 const WIRE_SAG := 30.0
 const AC_SIZE := Vector2(78, 62)   # the art at 2x
 const ANTENNA_SIZE := Vector2(12, 200)  # the pole; the art is drawn around it
@@ -168,10 +168,12 @@ func start() -> void:
 	started = true
 
 
-## Advances one tick. held is whether the jump button is down right now.
+## Advances one tick. held is whether the jump button is down right now;
+## tapped is true if a new press came in since the last tick, so a second
+## thumb, or a tap shorter than a tick, still jumps.
 ## Returns events for sound and effects: {type: "jump" | "land" | "edge" |
 ## "combo_lost" | "parcel" | "crumble" | "die", ...}.
-func step(held: bool) -> Array:
+func step(held: bool, tapped := false) -> Array:
 	var ev: Array = []
 	_update_roofs(ev)
 	if not alive:
@@ -183,7 +185,7 @@ func step(held: bool) -> Array:
 	if not started:
 		return ev
 	t += DT
-	var pressed := held and not was_held
+	var pressed := tapped or (held and not was_held)
 	was_held = held
 	buffer_t = 0.0 if pressed else buffer_t + DT
 

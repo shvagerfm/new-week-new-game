@@ -6,7 +6,8 @@ extends Node2D
 const SAVE_PATH := "user://rooftop_dash.cfg"
 const RESTART_DELAY := 0.45   # after a fall, taps are ignored this long
 const RUNNER_AT := 0.24       # the runner's place across the screen
-const BUTTON := 72.0          # size of the corner buttons
+const BUTTON := 88.0          # size of the corner buttons, about 48 pt on a phone
+const EDGE := 40.0            # their gap from the sides, clear of rounded corners and notches
 
 enum State { TITLE, RUN, PAUSED, OVER }
 
@@ -27,6 +28,7 @@ var land_t := -1.0          # world time of the last landing, for the squash fra
 
 var touches := {}           # touch index -> true while a finger is down
 var key_down := false
+var tapped := false         # a press came in since the last tick
 var particles: Array = []   # {p, v, life, max, col, size}
 var popups: Array = []      # {p, text, life, col}
 
@@ -38,6 +40,7 @@ var mult_label: Label
 var best_label: Label
 var hint_label: Label
 var title_label: Label
+var rotate_label: Label
 
 
 func _ready() -> void:
@@ -61,7 +64,7 @@ func _ready() -> void:
 func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventScreenTouch:
 		if event.pressed:
-			if _corner_button(event.position):
+			if _portrait() or _corner_button(event.position):
 				return
 			touches[event.index] = true
 			_on_press()
@@ -71,7 +74,7 @@ func _unhandled_input(event: InputEvent) -> void:
 		var k: Key = event.keycode
 		if k in [KEY_SPACE, KEY_UP, KEY_W, KEY_ENTER, KEY_KP_ENTER, KEY_Z]:
 			key_down = event.pressed
-			if event.pressed:
+			if event.pressed and not _portrait():
 				_on_press()
 		elif event.pressed and k == KEY_M:
 			_set_muted(not muted)
@@ -91,14 +94,26 @@ func _held() -> bool:
 	return key_down or not touches.is_empty()
 
 
+## A phone held upright: the game needs the width, so it waits for a turn.
+func _portrait() -> bool:
+	var vp := get_viewport_rect().size
+	return vp.y > vp.x
+
+
+func _release_all() -> void:
+	touches.clear()
+	key_down = false
+	tapped = false
+
+
 ## True if the press landed on the sound or pause button (and was handled).
 func _corner_button(pos: Vector2) -> bool:
 	var vw := get_viewport_rect().size.x
-	if Rect2(vw - BUTTON - 16, 24, BUTTON, BUTTON).grow(8).has_point(pos):
+	if Rect2(vw - BUTTON - EDGE, 24, BUTTON, BUTTON).grow(12).has_point(pos):
 		_set_muted(not muted)
 		sfx.play("click")
 		return true
-	if state in [State.RUN, State.PAUSED] and Rect2(16, 24, BUTTON, BUTTON).grow(8).has_point(pos):
+	if state in [State.RUN, State.PAUSED] and Rect2(EDGE, 24, BUTTON, BUTTON).grow(12).has_point(pos):
 		if state == State.RUN:
 			_pause()
 		else:
@@ -109,6 +124,8 @@ func _corner_button(pos: Vector2) -> bool:
 
 func _on_press() -> void:
 	match state:
+		State.RUN:
+			tapped = true
 		State.TITLE:
 			_start_run()
 		State.PAUSED:
@@ -134,6 +151,7 @@ func _new_world() -> void:
 func _start_run() -> void:
 	state = State.RUN
 	world.start()
+	_release_all()
 	world.was_held = true  # the press that started the run isn't a jump
 	runs += 1
 	title_label.hide()
@@ -161,8 +179,7 @@ func _show_title() -> void:
 
 func _pause() -> void:
 	state = State.PAUSED
-	touches.clear()
-	key_down = false
+	_release_all()
 	music.stream_paused = true
 	hint_label.text = "Paused\n\nTap to keep running"
 	hint_label.offset_top = 0
@@ -172,6 +189,7 @@ func _pause() -> void:
 func _resume() -> void:
 	state = State.RUN
 	world.was_held = true
+	tapped = false
 	music.stream_paused = false
 	hint_label.hide()
 
@@ -179,6 +197,7 @@ func _resume() -> void:
 func _game_over() -> void:
 	state = State.OVER
 	over_t = 0.0
+	_release_all()
 	var sc := world.score()
 	if sc > best_score:
 		best_score = sc
@@ -213,8 +232,10 @@ func _physics_process(_delta: float) -> void:
 		world.step(false)
 		return
 	var was_alive := world.alive
-	for e in world.step(_held() and state == State.RUN):
+	var run := state == State.RUN
+	for e in world.step(_held() and run, tapped and run):
 		_on_event(e)
+	tapped = false
 	if was_alive and not world.alive:
 		_game_over()
 	if state == State.RUN and world.alive:
@@ -227,6 +248,9 @@ func _physics_process(_delta: float) -> void:
 func _process(delta: float) -> void:
 	time += delta
 	var vp := get_viewport_rect().size
+	if _portrait() and state == State.RUN:
+		_pause()
+	_update_rotate_hint()
 	if state != State.PAUSED:
 		var tx := world.x - vp.x * RUNNER_AT
 		if world.alive:
@@ -365,7 +389,9 @@ func _draw() -> void:
 	_draw_speed_lines(vp)
 	if flash > 0.0:
 		draw_rect(Rect2(Vector2.ZERO, vp), Color(1, 0.55, 0.3, flash * 0.35))
-	if state == State.OVER or state == State.PAUSED or state == State.TITLE:
+	if _portrait():
+		draw_rect(Rect2(Vector2.ZERO, vp), Color(0.03, 0.04, 0.1, 0.8))
+	elif state == State.OVER or state == State.PAUSED or state == State.TITLE:
 		draw_rect(Rect2(Vector2.ZERO, vp), Color(0.03, 0.04, 0.1, 0.55 if state != State.OVER else clampf(over_t * 2.0, 0.0, 0.6)))
 	_draw_buttons(vp)
 
@@ -399,7 +425,7 @@ func _layer_fill(tex: Texture2D) -> Array:
 func _draw_sky(vp: Vector2, c: Vector2) -> void:
 	var dy := c.y - _cam_rest()
 	# Far: sky, moon and haze. Slow, because the moon repeats every 1280 px.
-	_draw_layer(SKY_FAR, vp, c.x * 0.04, clampf(-dy * 0.03, -40, 40), Color.WHITE)
+	_draw_layer(SKY_FAR, vp, c.x * 0.04, clampf(-dy * 0.03, -40, 40), Color.WHITE, MOON)
 	_draw_layer(SKY_MID, vp, c.x * 0.15, clampf(-dy * 0.08, -90, 90) + 70.0, Color(0.8, 0.8, 0.9))
 	# Near is darkened so it never reads as a roof you can land on.
 	_draw_layer(SKY_NEAR, vp, c.x * 0.35, clampf(-dy * 0.15, -120, 120) + 170.0, Color(0.55, 0.55, 0.72))
@@ -412,7 +438,14 @@ func _draw_sky(vp: Vector2, c: Vector2) -> void:
 ## Tiles a skyline layer across the screen, scrolled by sx, moved down by oy,
 ## and fills above and below it with its edge colours. A layer is painted for
 ## a 720 px tall screen: a 1280x720 one is drawn 1:1, a 640x360 one at 2x.
-func _draw_layer(tex: Texture2D, vp: Vector2, sx: float, oy: float, tint: Color) -> void:
+## On a wide phone screen two copies of the far layer show at once, so every
+## other copy has its moon covered with a patch of plain sky from further right.
+const MOON := Rect2(141, 61, 84, 86)
+const MOON_PATCH_DX := 300.0
+
+
+func _draw_layer(tex: Texture2D, vp: Vector2, sx: float, oy: float, tint: Color,
+		moon := Rect2()) -> void:
 	var k := roundf(720.0 / tex.get_height())
 	var w := tex.get_width() * k
 	var h := tex.get_height() * k
@@ -420,10 +453,16 @@ func _draw_layer(tex: Texture2D, vp: Vector2, sx: float, oy: float, tint: Color)
 	var fill := _layer_fill(tex)
 	if top > 0.0 and fill[0].a > 0.5:
 		draw_rect(Rect2(0, 0, vp.x, top), fill[0] * tint)
-	var x := -fposmod(roundf(sx / k) * k, w)
+	var s := roundf(sx / k) * k
+	var x := -fposmod(s, w)
+	var n := floori(s / w)
 	while x < vp.x:
 		draw_texture_rect(tex, Rect2(x, top, w, h), false, tint)
+		if moon.has_area() and n % 2 != 0:
+			draw_texture_rect_region(tex, Rect2(x + moon.position.x * k, top + moon.position.y * k,
+				moon.size.x * k, moon.size.y * k), Rect2(moon.position + Vector2(MOON_PATCH_DX, 0), moon.size), tint)
 		x += w
+		n += 1
 	if top + h < vp.y:
 		draw_rect(Rect2(0, top + h, vp.x, vp.y - top - h), fill[1] * tint)
 
@@ -595,8 +634,8 @@ func _draw_best_flag(vp: Vector2, c: Vector2) -> void:
 	fy = snappedf(fy, 4.0)
 	draw_rect(Rect2(fx, fy - 96, 4, 96), Art.WIRE)
 	var wave := 4.0 if int(time * 4.0) % 2 == 0 else 0.0
-	draw_rect(Rect2(fx + 4, fy - 96, 36, 20 + wave), Art.GOLD)
-	draw_string(ThemeDB.fallback_font, Vector2(fx + 8, fy - 80), "BEST", HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Color("0a0c1c"))
+	draw_rect(Rect2(fx + 4, fy - 96, 52, 28 + wave), Art.GOLD)
+	draw_string(ThemeDB.fallback_font, Vector2(fx + 8, fy - 74), "BEST", HORIZONTAL_ALIGNMENT_LEFT, -1, 20, Color("0a0c1c"))
 
 
 func _draw_speed_lines(vp: Vector2) -> void:
@@ -614,10 +653,12 @@ func _draw_speed_lines(vp: Vector2) -> void:
 
 
 func _draw_buttons(vp: Vector2) -> void:
+	# The icons are laid out on a 72 px square and scaled to the button size.
+	var k := BUTTON / 72.0
 	# Sound on/off, top right.
-	var r := Rect2(vp.x - BUTTON - 16, 24, BUTTON, BUTTON)
-	draw_rect(r, Color(0.04, 0.05, 0.12, 0.5))
-	var o := r.position + Vector2(16, 20)
+	draw_set_transform(Vector2(vp.x - BUTTON - EDGE, 24), 0.0, Vector2(k, k))
+	draw_rect(Rect2(0, 0, 72, 72), Color(0.04, 0.05, 0.12, 0.5))
+	var o := Vector2(16, 20)
 	draw_rect(Rect2(o + Vector2(0, 8), Vector2(8, 16)), Art.TEXT)
 	for i in 4:
 		draw_rect(Rect2(o + Vector2(8 + i * 4, 8 - i * 4), Vector2(4, 16 + i * 8)), Art.TEXT)
@@ -630,10 +671,11 @@ func _draw_buttons(vp: Vector2) -> void:
 		draw_rect(Rect2(o + Vector2(38, 6), Vector2(4, 20)), Art.TEXT)
 	# Pause, top left, while running.
 	if state == State.RUN:
-		var p := Rect2(16, 24, BUTTON, BUTTON)
-		draw_rect(p, Color(0.04, 0.05, 0.12, 0.5))
-		draw_rect(Rect2(p.position + Vector2(24, 20), Vector2(8, 32)), Art.TEXT)
-		draw_rect(Rect2(p.position + Vector2(40, 20), Vector2(8, 32)), Art.TEXT)
+		draw_set_transform(Vector2(EDGE, 24), 0.0, Vector2(k, k))
+		draw_rect(Rect2(0, 0, 72, 72), Color(0.04, 0.05, 0.12, 0.5))
+		draw_rect(Rect2(24, 20, 8, 32), Art.TEXT)
+		draw_rect(Rect2(40, 20, 8, 32), Art.TEXT)
+	draw_set_transform(Vector2.ZERO)
 
 
 # --- HUD -------------------------------------------------------------------
@@ -645,7 +687,7 @@ func _build_hud() -> void:
 	score_label.set_anchors_and_offsets_preset(Control.PRESET_TOP_WIDE)
 	score_label.offset_top = 24
 	score_label.offset_bottom = 104
-	meters_label = _label(layer, 28, Color("aab4e8"))
+	meters_label = _label(layer, 32, Color("aab4e8"))
 	meters_label.set_anchors_and_offsets_preset(Control.PRESET_TOP_WIDE)
 	meters_label.offset_top = 100
 	meters_label.offset_bottom = 136
@@ -653,7 +695,7 @@ func _build_hud() -> void:
 	mult_label.set_anchors_and_offsets_preset(Control.PRESET_TOP_WIDE)
 	mult_label.offset_top = 136
 	mult_label.offset_bottom = 186
-	best_label = _label(layer, 26, Art.GOLD)
+	best_label = _label(layer, 30, Art.GOLD)
 	best_label.set_anchors_and_offsets_preset(Control.PRESET_TOP_WIDE)
 	best_label.offset_top = 186
 	best_label.offset_bottom = 222
@@ -668,6 +710,11 @@ func _build_hud() -> void:
 	hint_label.offset_left = 24
 	hint_label.offset_right = -24
 	hint_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	rotate_label = _label(layer, 96, Art.TEXT)
+	rotate_label.text = "Turn your phone\nsideways to run"
+	rotate_label.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	rotate_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	rotate_label.hide()
 
 
 func _label(parent: Node, size: int, col: Color) -> Label:
@@ -683,6 +730,16 @@ func _label(parent: Node, size: int, col: Color) -> Label:
 	l.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	parent.add_child(l)
 	return l
+
+
+## Upright, the other text hides behind one big "turn your phone" line.
+func _update_rotate_hint() -> void:
+	var up := _portrait()
+	if rotate_label.visible == up:
+		return
+	rotate_label.visible = up
+	for l in [score_label, meters_label, mult_label, best_label, title_label, hint_label]:
+		l.modulate.a = 0.0 if up else 1.0
 
 
 func _set_hud_visible(v: bool) -> void:

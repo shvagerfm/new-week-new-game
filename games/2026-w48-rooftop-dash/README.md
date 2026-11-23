@@ -12,11 +12,20 @@ This week's game is **landscape** (1280×720), unlike the portrait template: a r
 | M, or the speaker in the top-right corner | Sound on/off |
 | Esc, P, or the pause button in the top-left corner | Pause |
 
-The game also pauses when the window or tab loses focus. After a fall, a tap restarts straight away (taps in the first 0.45 s are ignored so a panicked press doesn't skip the results).
+The game also pauses when the window or tab loses focus.
+
+### On phones
+
+- The game needs landscape. Held upright, it pauses and asks you to turn the phone.
+- Every new touch is a jump, even while another thumb is still down, so you can alternate thumbs. A tap shorter than one frame still counts.
+- A typical tap (up to about 0.15 s) passes under wires; only a deliberate hold hits them.
+- Jumps forgive a little touch lag: 0.10 s of coyote time after leaving a roof, and a press up to 0.15 s before landing still jumps.
+- The corner buttons are 88 px (about 48 pt on a phone) and sit 40 px in from the sides, clear of rounded corners and notches.
+- On very wide screens the far skyline shows twice, so every other copy hides its moon. After a fall, a tap restarts straight away (taps in the first 0.45 s are ignored so a panicked press doesn't skip the results).
 
 ## How a run works
 
-- **Speed** starts at 400 px/s and climbs toward 800 px/s. Gaps get wider with it, roofs get shorter, and obstacles show up more often (difficulty is full at 1200 m).
+- **Speed** starts at 400 px/s and climbs toward 800 px/s (about 540 px/s at 250 m, 620 at 500 m, 720 at 1000 m). Gaps get wider with it, roofs get shorter, and obstacles show up more often (difficulty is full at 1200 m).
 - **Edge landings.** Landing within 40 px of a roof's front edge raises the multiplier (up to ×5) and gives 10 × multiplier points. A normal landing on a new roof resets it.
 - **Parcels** give 25 × multiplier. They hang at the top of a full jump over a gap, above antennas, or in rows on roofs.
 - **Obstacles**
@@ -36,11 +45,13 @@ The game also pauses when the window or tab loses focus. After a fall, a tap res
 | `sprites/rooftop.png` | 4×2 atlas of 64×64 cells: roof left, middle, right, cracked; AC unit, antenna, wire, parcel. The roof surface is at y = 26 |
 | `sprites/skyline-*.png` | Far, middle and near parallax layers, wrapping. 1280×720 is drawn 1:1; 640×360 is drawn at 2x |
 
-The gameplay layer (courier, roofs, obstacles, parcels) is drawn at 2x; the skylines are already screen-sized and drawn 1:1. Roofs are built from the left, middle and right tiles, and the facade rows of the tiles repeat down to the street. The antenna is stretched to its 200 px height by repeating a stretch of its pole.
 | `art.gd` | Palette for the HUD and effects, plus the old string sprites used by `art/make_icon.py` |
 | `sfx.gd` | Sound effect pool |
 | `sfx/make_sfx.py` | Synthesizes every sound and the music loop (`python3 sfx/make_sfx.py`, needs numpy) |
 | `art/make_icon.py` | Draws `icon.png` from the courier sprite (needs Pillow) |
+
+The gameplay layer (courier, roofs, obstacles, parcels) is drawn at 2x; the skylines fill the screen height (1:1 or 2x). Roofs are built from the left, middle and right tiles, and the facade rows of the tiles repeat down to the street. The antenna is stretched to its 200 px height by repeating a stretch of its pole.
+
 
 The generator only places a gap if a jump from the edge covers it with room to spare: it simulates the jump with the same physics (`World.reach`). The music speeds up with the run (pitch 1.0 to 1.2).
 
@@ -50,6 +61,9 @@ The generator only places a gap if a jump from the edge covers it with room to s
 # A bot searches for button presses that survive the first 2500 m of 20 seeds.
 # A failure means the generator made an unfair jump.
 godot --headless --path . --script tests/bot.gd -- --seeds=20 --meters=2500
+
+# Touch input: a second thumb and a tap shorter than a frame both jump.
+godot --headless --path . --script tests/input_check.gd
 
 # Screenshots from the real scene, played by the same bot (needs a display: xvfb-run on a server).
 godot --path . --rendering-driver opengl3 --script tests/shots.gd -- --out=/tmp/shots --seed=7 --every=2 --until=40
