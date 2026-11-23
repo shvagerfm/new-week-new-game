@@ -23,6 +23,7 @@ var passed_best := false
 var new_best := false
 var runs := 0
 var muted := false
+var land_t := -1.0          # world time of the last landing, for the squash frame
 
 var touches := {}           # touch index -> true while a finger is down
 var key_down := false
@@ -40,6 +41,7 @@ var title_label: Label
 
 
 func _ready() -> void:
+	texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	_load()
 	_build_hud()
 	music = AudioStreamPlayer.new()
@@ -124,6 +126,7 @@ func _new_world() -> void:
 	cam = Vector2(world.x - get_viewport_rect().size.x * RUNNER_AT, _cam_target_y())
 	particles.clear()
 	popups.clear()
+	land_t = -1.0
 	passed_best = false
 	new_best = false
 
@@ -261,6 +264,7 @@ func _on_event(e: Dictionary) -> void:
 			sfx.play("jump", 0.05)
 			_dust(Vector2(world.x - 8, world.y), 5, -1.0)
 		"land":
+			land_t = world.t
 			var impact: float = e.impact
 			sfx.play("land", 0.08, linear_to_db(clampf(impact / 1400.0, 0.3, 1.0)))
 			_dust(Vector2(world.x, world.y), int(clampf(impact / 120.0, 3, 12)), 1.0)
@@ -342,7 +346,7 @@ func _draw() -> void:
 		if not p.taken:
 			var bob := snappedf(sin(time * 4.0 + p.x * 0.01) * 4.0, 4.0)
 			Art.sprite(self, Art.PARCEL, Vector2(p.x - 12, p.y - 10 + bob).snapped(Vector2(4, 4)))
-	_draw_runner()
+	_draw_runner(c)
 	for w in world.wires:
 		_draw_wire(w)
 	for p in particles:
@@ -546,28 +550,40 @@ func _draw_wire(w: Dictionary) -> void:
 		draw_rect(Rect2(pts[i].snapped(Vector2(4, 4)) - Vector2(4, 4), Vector2(8, 8)), Art.GOLD)
 
 
-func _draw_runner() -> void:
-	var rows: Array
-	var bob := 0.0
+## The courier sheet: 9 frames of 64x64 in a row (run 1-6, jump up, fall,
+## landing squash), drawn 1:1 with the feet 58 px down each frame.
+const COURIER: Texture2D = preload("res://sprites/courier.png")
+const FRAME := 64.0
+const FEET := 58.0
+const F_JUMP := 6
+const F_FALL := 7
+const F_LAND := 8
+const SQUASH_TIME := 0.09
+
+
+func _runner_frame() -> int:
 	if not world.alive:
-		rows = Art.courier("fall")
-	elif not world.started:
-		rows = Art.courier("run_b") if fmod(time, 3.0) > 0.2 else Art.courier("run_b", true)
-	elif not world.grounded:
-		rows = Art.courier("jump" if world.vy < 200.0 else "fall", world.vy < 0.0)
-	else:
-		var f := int(world.x / 34.0) % 4
-		rows = Art.courier(["run_a", "run_b", "run_c", "run_d"][f], f % 2 == 0)
-		bob = -4.0 if f % 2 == 1 else 0.0
-	var pos := Vector2(world.x - 24.0, world.y - 64.0 + bob).snapped(Vector2(4, 4))
+		return F_FALL
+	if not world.started:
+		return 0 if fmod(time, 3.0) > 0.25 else F_LAND
+	if not world.grounded:
+		return F_JUMP if world.vy < 150.0 else F_FALL
+	if world.t - land_t < SQUASH_TIME:
+		return F_LAND
+	# One run frame per 26 px, so the legs keep pace with the speed.
+	return int(world.x / 26.0) % 6
+
+
+func _draw_runner(c: Vector2) -> void:
+	var src := Rect2(_runner_frame() * FRAME, 0, FRAME, FRAME)
+	var pos := Vector2(roundf(world.x - FRAME * 0.5), roundf(world.y - FEET))
 	if not world.alive and world.death != "fall":
 		# Tumble backwards after a hit.
-		var ang := -over_t * 9.0
-		draw_set_transform(-((cam).snapped(Vector2(4, 4))) + pos + Vector2(24, 32), ang)
-		Art.sprite(self, rows, Vector2(-24, -32))
-		draw_set_transform(-(cam.snapped(Vector2(4, 4))))
+		draw_set_transform(-c + pos + Vector2(32, 32), -over_t * 9.0)
+		draw_texture_rect_region(COURIER, Rect2(-32, -32, FRAME, FRAME), src)
+		draw_set_transform(-c)
 		return
-	Art.sprite(self, rows, pos)
+	draw_texture_rect_region(COURIER, Rect2(pos, Vector2(FRAME, FRAME)), src)
 
 
 func _draw_best_flag(vp: Vector2, c: Vector2) -> void:
