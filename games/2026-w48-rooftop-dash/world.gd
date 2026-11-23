@@ -13,8 +13,8 @@ const HOLD_MAX := 0.24
 const MAX_FALL := 1900.0
 const COYOTE := 0.08       # a jump still works this long after running off an edge
 const BUFFER := 0.12       # a press this early before landing still jumps
-const HALF_W := 14.0
-const HEIGHT := 50.0  # matches the courier sprite, cap to shoes
+const HALF_W := 22.0
+const HEIGHT := 96.0  # matches the courier sprite at 2x, cap to shoes
 const SPEED_START := 400.0
 const SPEED_MAX := 800.0
 const SPEED_RAMP := 40000.0  # px; by here the speed is 63% of the way to max
@@ -30,10 +30,10 @@ const AHEAD := 3200.0
 const BEHIND := 1400.0
 ## Wires hang this high over the roof they start from: a tap passes under,
 ## a held jump hits them.
-const WIRE_HIGH := 310.0
+const WIRE_HIGH := 350.0
 const WIRE_SAG := 30.0
-const AC_SIZE := Vector2(64, 48)
-const ANTENNA_SIZE := Vector2(12, 200)
+const AC_SIZE := Vector2(78, 62)   # the art at 2x
+const ANTENNA_SIZE := Vector2(12, 200)  # the pole; the art is drawn around it
 
 var rng := RandomNumberGenerator.new()
 ## {id, x0, x1, y, base, crumble, t, vy}. t is -1 until a crumbling roof is touched.

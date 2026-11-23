@@ -23,7 +23,7 @@ The game also pauses when the window or tab loses focus. After a fall, a tap res
   - Air conditioner: jump over it or land on top.
   - Antenna: too tall for a tap, so hold.
   - Wire across a gap: a tap passes under, a held jump hits it.
-  - Crumbling roof (reddish brick top): it gives way a quarter second after you land, so jump off quickly.
+  - Crumbling roof (cracked, rust-tinted): it gives way a quarter second after you land, so jump off quickly.
 - **Score** is metres plus bonus points. The best score and the best distance are saved. A flag marks the best distance on the roofs, and a line counts down the last 100 m to it.
 
 ## Code
@@ -32,8 +32,12 @@ The game also pauses when the window or tab loses focus. After a fall, a tap res
 | --- | --- |
 | `world.gd` | The whole run as data and rules (physics, generation, collisions, score), with no drawing. Tests play it directly |
 | `main.gd` | Input, camera, drawing, effects, screens, HUD, saving |
-| `sprites/courier.png` | The courier: 9 frames of 64×64 (run 1-6, jump up, fall, landing squash), drawn 1:1 with the feet at y = 58 |
-| `art.gd` | Palette, plus the old string sprites still used by the parcel and `art/make_icon.py` |
+| `sprites/courier.png` | The courier: 9 frames of 64×64 (run 1-6, jump up, fall, landing squash), feet at y = 58 |
+| `sprites/rooftop.png` | 4×2 atlas of 64×64 cells: roof left, middle, right, cracked; AC unit, antenna, wire, parcel. The roof surface is at y = 26 |
+| `sprites/skyline-*.png` | Far, middle and near parallax layers, wrapping. 1280×720 is drawn 1:1; 640×360 is drawn at 2x |
+
+The gameplay layer (courier, roofs, obstacles, parcels) is drawn at 2x; the skylines are already screen-sized and drawn 1:1. Roofs are built from the left, middle and right tiles, and the facade rows of the tiles repeat down to the street. The antenna is stretched to its 200 px height by repeating a stretch of its pole.
+| `art.gd` | Palette for the HUD and effects, plus the old string sprites used by `art/make_icon.py` |
 | `sfx.gd` | Sound effect pool |
 | `sfx/make_sfx.py` | Synthesizes every sound and the music loop (`python3 sfx/make_sfx.py`, needs numpy) |
 | `art/make_icon.py` | Draws `icon.png` from the courier sprite (needs Pillow) |
