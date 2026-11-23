@@ -397,11 +397,15 @@ func _draw() -> void:
 	var c := (cam - off).snapped(Vector2(Art.P, Art.P))
 	_draw_sky(vp, c)
 	draw_set_transform(-c)
+	_cam_now = c
+	_fx_back.clear()
+	_fx_front.clear()
 	_draw_best_flag(vp, c)
 	for w in world.wires:
 		_draw_wire_posts(w)
 	for r in world.roofs:
 		_draw_roof(r, c, vp)
+	_draw_scene_fx(_fx_back)
 	for o in world.obstacles:
 		_draw_obstacle(o)
 	for p in world.parcels:
@@ -410,6 +414,7 @@ func _draw() -> void:
 	_draw_runner(c)
 	for w in world.wires:
 		_draw_wire(w)
+	_draw_scene_fx(_fx_front)
 	for p in particles:
 		var a: float = 1.0 - p.life / p.max
 		var col: Color = p.col
@@ -443,10 +448,9 @@ const SKY_FAR: Texture2D = preload("res://sprites/skyline-far.png")
 const SKY_MID: Texture2D = preload("res://sprites/skyline-middle.png")
 const SKY_NEAR: Texture2D = preload("res://sprites/skyline-near.png")
 const TILE := 64.0
-## In the roof tiles the walkable surface is 26 px down, and rows 34-64 are
-## facade (brick and a window) that repeats down to the street.
+## In the roof tiles the walkable surface is 26 px down; rows 26-35 are the
+## coping. The facade below it comes from facade.png.
 const ROOF_TOP := 26.0
-const FACADE_Y := 34.0
 const WIRE_DARK := Color("1d2347")
 const WIRE_EDGE := Color("9aa9ee")
 
@@ -550,16 +554,10 @@ func _draw_roof(r: Dictionary, c: Vector2, vp: Vector2) -> void:
 	var mid := 3 if r.crumble else 1
 	# Crumbling roofs are cracked and a little rust-red, so they read early.
 	var tint := Color(1.25, 0.82, 0.8) if r.crumble else Color.WHITE
-	# The roof itself: coping, slab and the first row of facade.
-	_roof_strip(x0, x1, y, ROOF_TOP, TILE - ROOF_TOP, mid, tint)
-	# More facade below, band after band, down past the bottom of the screen.
-	var band := (TILE - FACADE_Y) * S
-	var yy := y + (TILE - ROOF_TOP) * S
-	var row := 0
-	while yy < bottom:
-		_roof_strip(x0, x1, yy, FACADE_Y, TILE - FACADE_Y, 3 if r.crumble and row == 0 else 1, tint)
-		yy += band
-		row += 1
+	# The roof itself: the coping, then the facade floor after floor, down
+	# past the bottom of the screen.
+	_roof_strip(x0, x1, y, ROOF_TOP, CAP_H, mid, tint)
+	_draw_facade(r, y + CAP_H * S, bottom, tint, c, vp)
 	# The bonus edge: land in this strip to grow the multiplier. It glows on
 	# roofs still ahead, with chevrons pointing at the edge.
 	if x0 > world.x and state != State.TITLE:
@@ -572,6 +570,209 @@ func _draw_roof(r: Dictionary, c: Vector2, vp: Vector2) -> void:
 			draw_rect(Rect2(cx, y - 16 - (k % 2) * 0, 4, 4), Color(Art.GOLD, pulse))
 			draw_rect(Rect2(cx - 4, y - 20, 4, 4), Color(Art.GOLD, pulse * 0.8))
 			draw_rect(Rect2(cx - 4, y - 12, 4, 4), Color(Art.GOLD, pulse * 0.8))
+
+
+# --- Facades and window scenes ---------------------------------------------
+## Below the coping (rows 26-35 of rooftop.png) each building is facade.png:
+## 64x64 cells, one floor each, with a see-through window opening that
+## shows a room from window-rooms.png, or on some roofs a little animated
+## scene from window-scenes.png. The scenes never hurt; they are there to pull
+## the eye away from the roofs.
+const FACADE: Texture2D = preload("res://sprites/facade.png")
+const ROOMS: Texture2D = preload("res://sprites/window-rooms.png")
+const SCENES: Texture2D = preload("res://sprites/window-scenes.png")
+const PROPS: Texture2D = preload("res://sprites/window-props.png")
+const CAP_H := 10.0
+const WIN := Rect2(16, 12, 32, 40)     # the opening in a window cell
+const WIN_W := 32.0
+const WIN_H := 40.0
+const SCENES_FROM_M := 60.0             # no scenes on the first roofs
+const SCENE_CHANCE := 55                # percent of roofs after that
+enum Scene {CAT, DISCO, GRANNY, COUPLE, GRANDPA, DOG}
+const DISCO_COLS := [Color("ff4d5e"), Color("4a78ff"), Color("ffd27a"), Color("4caf50"), Color("8a66b8"), Color("ff8a3d")]
+
+## Effects the scenes throw out, drawn over the roofs (back) or over the
+## courier (front). Rebuilt every frame.
+var _fx_back: Array = []
+var _fx_front: Array = []
+
+
+## The facade cells of a building, left to right: [x, width, column]. Column
+## 0 and 3 are the ends, 1 a window, 2 plain wall.
+func _facade_cells(r: Dictionary) -> Array:
+	var cw := TILE * S
+	var x0: float = r.x0
+	var x1: float = r.x1
+	var w := x1 - x0
+	if w < cw * 2.0:
+		var half := roundf(w * 0.5 / S) * S
+		return [[x0, half, 0], [x0 + half, w - half, 3]]
+	var cells := [[x0, cw, 0]]
+	var n := floori((w - cw * 2.0) / cw)
+	var extra := w - cw * 2.0 - n * cw
+	var x := x0 + cw
+	if extra > 0.0:
+		cells.append([x, extra, 2])
+		x += extra
+	for i in n:
+		# Mostly windows, now and then a stretch of plain brick.
+		cells.append([x, cw, 2 if Art.hash3(int(x0), i, 5) % 4 == 0 else 1])
+		x += cw
+	cells.append([x1 - cw, cw, 3])
+	return cells
+
+
+func _draw_facade(r: Dictionary, top: float, bottom: float, tint: Color, c: Vector2, vp: Vector2) -> void:
+	var cw := TILE * S
+	var cells := _facade_cells(r)
+	var row := 64.0 if r.crumble else 0.0
+	# One scene per chosen roof, in a window of the top two floors.
+	var scene := -1
+	var scene_at := Vector2i(-1, -1)
+	var h := Art.hash3(int(r.x0), 4242)
+	if (r.x0 - world.start_x) / World.PX_PER_M > SCENES_FROM_M and h % 100 < SCENE_CHANCE:
+		var wins := []
+		for i in cells.size():
+			if cells[i][2] == 1:
+				wins.append(i)
+		if not wins.is_empty():
+			scene = (h >> 7) % 6
+			scene_at = Vector2i(wins[(h >> 4) % wins.size()], (h >> 11) % 2)
+	var floor_i := 0
+	var yy := top
+	while yy < bottom:
+		if yy + cw > c.y:
+			for i in cells.size():
+				var cell: Array = cells[i]
+				var x: float = cell[0]
+				var w: float = cell[1]
+				if x + w < c.x or x > c.x + vp.x:
+					continue
+				var col: int = cell[2]
+				# The right end and a short left end are cut from the cell's far side.
+				var sx := col * TILE + (TILE - w / S if col == 3 else 0.0)
+				if col == 1:
+					var at := Vector2(x + WIN.position.x * S, yy + WIN.position.y * S)
+					if Vector2i(i, floor_i) == scene_at:
+						_draw_scene(scene, at, r)
+					else:
+						_draw_room(at, Art.hash3(int(r.x0), i, floor_i))
+				draw_texture_rect_region(FACADE, Rect2(x, yy, w, cw), Rect2(sx, row, w / S, TILE), tint)
+		yy += cw
+		floor_i += 1
+
+
+func _draw_room(at: Vector2, h: int) -> void:
+	var lit := h % 100 < 55
+	var k := (h >> 7) % 4 if lit else 4
+	draw_texture_rect_region(ROOMS, Rect2(at, Vector2(WIN_W, WIN_H) * S), Rect2(k * WIN_W, 0, WIN_W, WIN_H))
+	_draw_glass(at, 0.10 if lit else 0.06)
+
+
+## A pale streak across the glass, the same on every window.
+func _draw_glass(at: Vector2, a: float) -> void:
+	draw_rect(Rect2(at + Vector2(10, 0), Vector2(8, WIN_H * S)), Color(1, 1, 1, a))
+	draw_rect(Rect2(at + Vector2(24, 0), Vector2(4, WIN_H * S)), Color(1, 1, 1, a * 0.6))
+
+
+## Draws one window scene at the opening's top-left corner and queues what
+## it throws out. Most scenes play as the courier comes near, so they peak
+## when the eye should be on the next jump.
+func _draw_scene(kind: int, at: Vector2, r: Dictionary) -> void:
+	var size := Vector2(WIN_W, WIN_H) * S
+	var mid := at + size * 0.5
+	var d := mid.x - world.x          # how far ahead of the courier
+	var f := 0
+	var shake := Vector2.ZERO
+	match kind:
+		Scene.CAT:
+			f = clampi(int((1100.0 - d) / 110.0), 0, 5)
+			if f >= 4:
+				_fx_back.append({"kind": "pot", "from": at + Vector2(52, 66), "t": (660.0 - d) / maxf(world.speed(), 1.0)})
+		Scene.DISCO:
+			f = int(time * 7.0) % 6
+			if absf(d) < 1100.0:
+				_fx_back.append({"kind": "disco", "at": mid, "seed": int(r.x0)})
+		Scene.GRANNY:
+			f = clampi(int((900.0 - d) / 100.0), 0, 5)
+			if f >= 3 and f < 5:
+				_fx_front.append({"kind": "glint", "at": at + Vector2(30, 40)})
+			if f == 5 and d > -500.0:
+				_fx_front.append({"kind": "spot", "at": mid})
+		Scene.COUPLE:
+			f = clampi(int((1000.0 - d) / 100.0), 0, 5)
+			if f >= 4:
+				_fx_front.append({"kind": "pillow", "from": at + Vector2(16, 24), "t": (600.0 - d) / maxf(world.speed(), 1.0)})
+		Scene.GRANDPA:
+			f = int(time * 5.0) % 6
+			_fx_back.append({"kind": "tv", "at": mid})
+		Scene.DOG:
+			if d > 700.0:
+				f = 0
+			elif d > 600.0:
+				f = 1
+			elif d > 150.0:
+				f = 2 + int(time * 8.0) % 2
+				shake = Vector2(S * (int(time * 30.0) % 2), 0)
+				_fx_front.append({"kind": "woof", "at": at + Vector2(size.x * 0.5, -40), "k": int(time * 8.0) % 2})
+			else:
+				f = 4 if d > 0.0 else 5
+	draw_texture_rect_region(SCENES, Rect2(at + shake, size), Rect2(f * WIN_W, kind * WIN_H, WIN_W, WIN_H))
+	_draw_glass(at, 0.12)
+
+
+func _prop(cell: Vector2i, center: Vector2, scale := S, rot := 0.0, mod := Color.WHITE) -> void:
+	var size := Vector2(16, 16) * scale
+	if rot == 0.0:
+		draw_texture_rect_region(PROPS, Rect2((center - size * 0.5).round(), size), Rect2(cell * 16, Vector2(16, 16)), mod)
+		return
+	draw_set_transform(-_cam_now + center, rot)
+	draw_texture_rect_region(PROPS, Rect2(-size * 0.5, size), Rect2(cell * 16, Vector2(16, 16)), mod)
+	draw_set_transform(-_cam_now)
+
+
+var _cam_now := Vector2.ZERO
+
+
+func _draw_scene_fx(list: Array) -> void:
+	for e in list:
+		match e.kind:
+			"pot":
+				# Falls from the sill and breaks on the roof below, or is lost in the gap.
+				var t: float = e.t
+				var p: Vector2 = e.from + Vector2(t * 40.0, 0.5 * 1500.0 * t * t)
+				if t < 1.4:
+					_prop(Vector2i(int(t * 8.0) % 2, 0), p, S * 1.5)
+			"disco":
+				for i in 7:
+					var a: float = time * (0.9 + i * 0.13) + i * 1.9 + e.seed
+					var p: Vector2 = e.at + Vector2(sin(a) * 300.0, cos(a * 1.3) * 160.0 - 40.0)
+					var col: Color = DISCO_COLS[i % DISCO_COLS.size()]
+					col.a = 0.55
+					_prop(Vector2i(2, 1), p.snapped(Vector2(4, 4)), S * 3.0, 0.0, col)
+			"tv":
+				var a: float = 0.10 + 0.07 * sin(time * 23.0) + 0.05 * sin(time * 7.0)
+				draw_rect(Rect2(e.at - Vector2(100, 90), Vector2(200, 190)), Color(0.45, 0.65, 1.0, a))
+			"glint":
+				if int(time * 6.0) % 2 == 0:
+					_prop(Vector2i(5, 1), e.at, S * 1.5)
+			"spot":
+				# Granny's lamp: a wide warm beam that follows the courier.
+				var feet := Vector2(world.x, world.y)
+				var pts := PackedVector2Array([e.at + Vector2(-20, -30), e.at + Vector2(20, -30),
+					feet + Vector2(110, 0), feet + Vector2(-110, 0)])
+				draw_colored_polygon(pts, Color(1.0, 0.85, 0.45, 0.22))
+			"pillow":
+				# Thrown out of the window, it tumbles towards the screen and grows.
+				var t: float = e.t
+				if t < 1.1:
+					var p: Vector2 = e.from + Vector2(-t * 520.0, -t * 260.0 + t * t * 120.0)
+					var a: float = clampf((1.1 - t) * 3.0, 0.0, 1.0)
+					_prop(Vector2i(3 + int(t * 10.0) % 4, 0), p, S * (1.5 + t * 9.0), t * 5.0, Color(1, 1, 1, a))
+					for i in 3:
+						_prop(Vector2i(7, 0), p + Vector2(i * 50 - 30, 40 + t * 200.0 * (i + 1)), S * 1.5, t * 3.0 + i, Color(1, 1, 1, a))
+			"woof":
+				_prop(Vector2i(3 + e.k, 1), e.at + Vector2(0, -6 * e.k), S * 2.0)
 
 
 ## Placeholder art for the newer obstacles, until their sprites are drawn.
