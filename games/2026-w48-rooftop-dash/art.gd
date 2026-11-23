@@ -16,6 +16,8 @@ const PAL := {
 	"b": Color("b8733a"),  # parcel on the back
 	"o": Color("ffd27a"),  # tape and strap
 	"r": Color("ff4d5e"),
+	"v": Color("4b3368"),  # bat body
+	"V": Color("8a66b8"),  # bat wing
 }
 
 const SKY := [Color("0a0d22"), Color("0f1534"), Color("151d47"), Color("1d2459"),
@@ -113,6 +115,30 @@ const LEGS := {
 		".kkk...kkk..",
 	],
 }
+
+## Placeholder bat, two wing frames, 12x8 pixels.
+const BAT := [
+	[
+		"V..........V",
+		"VV........VV",
+		"VVV.v..v.VVV",
+		".VVvvvvvvVV.",
+		"..vvrvvrvv..",
+		"...vvvvvv...",
+		"....v..v....",
+		"............",
+	],
+	[
+		"............",
+		"....v..v....",
+		"...vvvvvv...",
+		"..vvrvvrvv..",
+		".VVvvvvvvVV.",
+		"VVV.vvvv.VVV",
+		"VV........VV",
+		"V..........V",
+	],
+]
 
 const PARCEL := [
 	"kkkkkk",

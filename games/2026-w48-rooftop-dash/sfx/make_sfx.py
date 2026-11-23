@@ -130,11 +130,15 @@ save("combo_lost", lowpass(mix(
     at(tone(note("B4"), 0.14, "tri") * env(int(RATE * 0.14), 0.002, 0.1), 0.07),
 ), 3000), peak=0.25)
 
-# Parcel picked up: coin-like double ping.
-save("parcel", mix(
-    tone(note("B5"), 0.07, "square", 0.6) * env(int(RATE * 0.07), 0.002, 0.05),
-    at(tone(note("E6"), 0.2, "square", 0.6) * env(int(RATE * 0.2), 0.002, 0.15), 0.06),
-), peak=0.38)
+# Parcel picked up: a soft round "bloop" into a small bell. Pure sines, no
+# buzz; the game raises the pitch along a scale for parcels in a row.
+d = 0.09
+n = int(RATE * d)
+bloop = tone(np.geomspace(420, 880, n), d) * env(n, 0.003, 0.07)
+d2 = 0.32
+n2 = int(RATE * d2)
+bell = (tone(note("E6"), d2) + tone(note("E6") * 2, d2) * 0.25 + tone(note("B6"), d2) * 0.15) * env(n2, 0.002, 0.22)
+save("parcel", mix(bloop * 0.9, at(bell * 0.6, 0.045)), peak=0.34)
 
 # A roof starts to crumble: rattling rumble.
 d = 0.45
@@ -269,5 +273,34 @@ for name, song in stems.items():
         w.setsampwidth(2)
         w.setframerate(RATE)
         w.writeframes((song * gain * 32767).astype("<i2").tobytes())
+
+
+# --- Newer obstacles (kept after the music so the older sounds don't change) --
+
+# Through a skylight: a bright glass smash with tinkling shards.
+d = 0.7
+n = int(RATE * d)
+smash = highpass(noise(0.12), 3000) * env(int(RATE * 0.12), 0.001, 0.08)
+bits = []
+for k in range(9):
+    dd = 0.12
+    bits.append(at(tone(rng.uniform(2500, 5200), dd) * env(int(RATE * dd), 0.001, 0.06) * rng.uniform(0.3, 0.6),
+                   0.05 + k * 0.06))
+tinkle = mix(*bits)
+save("glass", mix(smash, tinkle, tone(np.linspace(160, 70, n), d) * env(n, 0.002, 0.2) * 0.4), peak=0.5)
+
+# Into a bat: two quick high squeaks.
+parts = []
+for i, f0 in enumerate([2600, 3100]):
+    dd = 0.07
+    k = int(RATE * dd)
+    parts.append(at(tone(np.linspace(f0, f0 * 1.3, k), dd, "tri") * env(k, 0.002, 0.05), i * 0.09))
+save("squeak", mix(*parts, lowpass(noise(0.1), 1500) * env(int(RATE * 0.1), 0.001, 0.05) * 0.5), peak=0.42)
+
+# Into the laundry: a soft cloth flap and a thump.
+d = 0.35
+n = int(RATE * d)
+flap = lowpass(noise(d), 1200) * env(n, 0.01, 0.25) * (0.6 + 0.4 * np.sin(2 * np.pi * 18 * t_axis(d)))
+save("cloth", mix(flap, tone(np.linspace(120, 60, n), d) * env(n, 0.002, 0.12) * 0.6), peak=0.45)
 
 print("wrote", sorted(f for f in os.listdir(OUT) if f.endswith(".wav")))

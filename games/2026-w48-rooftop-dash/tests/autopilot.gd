@@ -12,7 +12,7 @@ var tried := 0
 var best := 0.0
 ## [tick, hold] per jump, in order; tick counts World steps since start().
 var plan: Array = []
-var stats := {"ac": 0, "antenna": 0, "wire": 0, "crumble": 0}
+var stats := {"ac": 0, "antenna": 0, "skylight": 0, "bat": 0, "laundry": 0, "wire": 0, "crumble": 0}
 var _seen := {}
 ## Prefer launches this many ticks before the last safe one, like a person
 ## who doesn't wait for the very edge. 0 jumps as late as possible.
@@ -67,7 +67,7 @@ func _run(w: World, goal: float) -> bool:
 				best = maxf(best, j.meters())
 				plan.append([_ticks(s), h])
 				if _run(j, goal):
-					_count(s, j)
+					_count(w, j)
 					return true
 				plan.pop_back()
 	return false

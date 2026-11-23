@@ -23,7 +23,8 @@ const BTN2_LO := Color("1a2250")
 
 const WHY := {"fall": "Fell between the roofs", "wall": "Ran into a wall",
 	"ac": "Tripped on an air conditioner", "antenna": "Hit an antenna",
-	"wire": "Caught in a wire"}
+	"wire": "Caught in a wire", "bat": "Bumped into a bat",
+	"laundry": "Tangled in the laundry", "skylight": "Fell through a skylight"}
 
 var main: Node
 var bold: FontVariation

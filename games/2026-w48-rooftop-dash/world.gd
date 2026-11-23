@@ -33,12 +33,20 @@ const BEHIND := 1400.0
 const WIRE_HIGH := 370.0
 const WIRE_SAG := 30.0
 const AC_SIZE := Vector2(78, 62)   # the art at 2x
-const ANTENNA_SIZE := Vector2(12, 200)  # the pole; the art is drawn around it
+const ANTENNA_SIZE := Vector2(12, 150)  # the pole; the art is drawn around it
+## Bats hover just above head height: run under them, a jump hits them.
+const BAT_SIZE := Vector2(44, 30)
+const BAT_GAP := 26.0
+## Laundry hangs on a line across a roof, down to just above the head.
+const LAUNDRY_LINE := 200.0
+const LAUNDRY_GAP := 22.0
+## Kinds that are passed by running under them, not by jumping.
+const DUCK := ["bat", "laundry"]
 
 var rng := RandomNumberGenerator.new()
 ## {id, x0, x1, y, base, crumble, t, vy}. t is -1 until a crumbling roof is touched.
 var roofs: Array = []
-## {kind ("ac" or "antenna"), x0, x1, y0, y1, roof}
+## {kind ("ac", "antenna", "skylight", "bat" or "laundry"), x0, x1, y0, y1, roof}
 var obstacles: Array = []
 ## {ax, ay, bx, by}: hangs from a to b with WIRE_SAG in the middle.
 var wires: Array = []
@@ -289,6 +297,12 @@ func _collide(px: float, ev: Array) -> void:
 			_die("wall", ev)
 			return
 	for o in obstacles:
+		if o.kind == "skylight":
+			# Glass in the roof: running onto it (feet over the pane) breaks it.
+			if grounded and ground.get("id", -1) == o.roof and x > o.x0 + 6.0 and x < o.x1 - 6.0:
+				_die("skylight", ev)
+				return
+			continue
 		var top: float = o.y0 + (6.0 if o.kind == "ac" else 0.0)
 		if body.intersects(Rect2(o.x0, top, o.x1 - o.x0, o.y1 - top)):
 			if not (grounded and ground == o):
@@ -320,6 +334,9 @@ func _die(reason: String, ev: Array) -> void:
 	grounded = false
 	if reason == "fall":
 		dead_vx = speed() * 0.6
+	elif reason == "skylight":
+		dead_vx = speed() * 0.15  # straight down through the glass
+		vy = 0.0
 	else:
 		dead_vx = -speed() * 0.25
 		vy = -500.0
@@ -420,26 +437,74 @@ func _gen_obstacles(r: Dictionary, v: float, m: float, d: float) -> void:
 	var flat_hold := reach(v, 0.0, true)
 	var cursor: float = r.x0 + v * 0.65
 	var placed := false
-	while m > 100.0 and rng.randf() < lerpf(0.4, 0.8, d):
-		var antenna := m > 350.0 and rng.randf() < 0.45
-		var size := ANTENNA_SIZE if antenna else AC_SIZE
-		# A jump from right before it must land back on this roof.
-		var room: float = r.x1 - (flat_hold * 0.85 if antenna else flat_tap * 0.95) - size.x - cursor
+	var ducked := false   # the last thing placed is run under, not jumped
+	while m > 60.0 and rng.randf() < lerpf(0.5, 0.85, d):
+		var kind := _pick_kind(m)
+		var duck: bool = kind in DUCK
+		# A run-under obstacle must not sit where the last jump comes down.
+		var start := cursor + (flat_hold * 0.3 if duck and placed and not ducked else 0.0)
+		var size: Vector2 = {"ac": AC_SIZE, "antenna": ANTENNA_SIZE, "bat": BAT_SIZE}.get(kind, Vector2.ZERO)
+		if kind == "skylight":
+			size = Vector2(snappedf(rng.randf_range(0.3, lerpf(0.45, 0.6, d)) * flat_tap, 8.0), 8.0)
+		elif kind == "laundry":
+			size = Vector2(snappedf(rng.randf_range(160.0, 280.0), 8.0), LAUNDRY_LINE - HEIGHT - LAUNDRY_GAP)
+		# After a jump-over, a jump from right before it must land back on this
+		# roof; after a run-under, there must be room to run off and jump.
+		var after: float = flat_tap * 0.95
+		if kind == "antenna":
+			after = flat_hold * 0.85
+		elif duck:
+			after = v * 0.3 + HALF_W
+		var room: float = r.x1 - after - size.x - start
 		if room < 0.0:
 			break
-		var ox := snappedf(cursor + rng.randf() * minf(room, v * 0.8), 4.0)
-		var o := {"kind": "antenna" if antenna else "ac", "x0": ox, "x1": ox + size.x,
-			"y0": r.y - size.y, "y1": r.y, "roof": r.id}
+		var ox := snappedf(start + rng.randf() * minf(room, v * 0.8), 4.0)
+		var o := {"kind": kind, "x0": ox, "x1": ox + size.x, "y0": r.y - size.y, "y1": r.y, "roof": r.id}
+		if kind == "bat":
+			o.y1 = r.y - HEIGHT - BAT_GAP
+			o.y0 = o.y1 - size.y
+		elif kind == "laundry":
+			o.y0 = r.y - LAUNDRY_LINE
+			o.y1 = r.y - HEIGHT - LAUNDRY_GAP
 		obstacles.append(o)
 		placed = true
-		if antenna and rng.randf() < 0.5:
+		ducked = duck
+		if kind == "antenna" and rng.randf() < 0.5:
 			parcels.append({"x": ox + size.x * 0.5, "y": r.y - size.y - 40.0, "taken": false})
-		cursor = ox + size.x + maxf(flat_tap, flat_hold * 0.8) + v * 0.35
+		elif duck and rng.randf() < 0.4:
+			# A parcel at running height under it, as a reward for not jumping.
+			parcels.append({"x": ox + size.x * 0.5, "y": r.y - 44.0, "taken": false})
+		if duck:
+			cursor = ox + size.x + v * 0.35
+		else:
+			cursor = ox + size.x + maxf(flat_tap, flat_hold * 0.8) + v * 0.35
 	if not placed and m > 10.0 and rng.randf() < 0.3:
 		var px: float = r.x0 + v * 0.5
 		for i in 3:
 			if px + i * 64.0 < r.x1 - 40.0:
 				parcels.append({"x": px + i * 64.0, "y": r.y - 44.0, "taken": false})
+
+
+## Which obstacle comes next. New kinds join as the run goes on.
+func _pick_kind(m: float) -> String:
+	var kinds := {"ac": 3.0}
+	if m > 150.0:
+		kinds["skylight"] = 2.0
+	if m > 220.0:
+		kinds["bat"] = 2.0
+	if m > 350.0:
+		kinds["antenna"] = 1.6
+	if m > 420.0:
+		kinds["laundry"] = 1.6
+	var total := 0.0
+	for k in kinds:
+		total += kinds[k]
+	var pick := rng.randf() * total
+	for k in kinds:
+		pick -= kinds[k]
+		if pick <= 0.0:
+			return k
+	return "ac"
 
 
 # --- Copies for the test bot ----------------------------------------------
