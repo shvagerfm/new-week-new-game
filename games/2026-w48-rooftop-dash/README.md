@@ -32,7 +32,8 @@ The game also pauses when the window or tab loses focus. After a fall, a tap res
 | --- | --- |
 | `world.gd` | The whole run as data and rules (physics, generation, collisions, score), with no drawing. Tests play it directly |
 | `main.gd` | Input, camera, drawing, effects, screens, HUD, saving |
-| `art.gd` | Palette and the pixel sprites, written as strings (one character per pixel) |
+| `sprites/courier.png` | The courier: 9 frames of 64×64 (run 1-6, jump up, fall, landing squash), drawn 1:1 with the feet at y = 58 |
+| `art.gd` | Palette, plus the old string sprites still used by the parcel and `art/make_icon.py` |
 | `sfx.gd` | Sound effect pool |
 | `sfx/make_sfx.py` | Synthesizes every sound and the music loop (`python3 sfx/make_sfx.py`, needs numpy) |
 | `art/make_icon.py` | Draws `icon.png` from the courier sprite (needs Pillow) |
