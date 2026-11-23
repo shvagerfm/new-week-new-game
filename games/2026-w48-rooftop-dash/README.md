@@ -48,9 +48,9 @@ The game also pauses when the window or tab loses focus.
 - Windows are big (64×80 on screen). About half are lit, each showing a room.
 - From 60 m, about half the buildings have one scene in a window on the top two floors. The scenes never hurt you; they are there to pull your eye away from the jump:
   - Cat: pushes a pot off the sill as you come near, and the pot falls past the facade.
-  - Disco dancer: in shorts, with coloured lights sweeping over the roofs.
+  - Disco dancer: busts disco moves, with coloured lights sweeping over the roofs.
   - Granny: opens the curtains, watches through binoculars, then switches on a lamp whose beam follows you.
-  - Couple: argue, and a pillow flies out of the window and tumbles towards the screen.
+  - Couple: have a pillow fight, and the pillow flies out of the window and tumbles towards the screen.
   - Grandpa: lifts dumbbells in front of a flickering TV that lights up the wall.
   - Dog: wakes as you come, barks (WOOF, the glass shakes), then squashes its nose on the glass.
   - Mirror: a pin-up poses for her mirror, blows it a kiss, spots you and yanks the curtain shut.
