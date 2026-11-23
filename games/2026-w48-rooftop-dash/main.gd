@@ -400,9 +400,9 @@ func _draw_sky(vp: Vector2, c: Vector2) -> void:
 	var dy := c.y - _cam_rest()
 	# Far: sky, moon and haze. Slow, because the moon repeats every 1280 px.
 	_draw_layer(SKY_FAR, vp, c.x * 0.04, clampf(-dy * 0.03, -40, 40), Color.WHITE)
-	_draw_layer(SKY_MID, vp, c.x * 0.15, clampf(-dy * 0.08, -90, 90) + 40.0, Color.WHITE)
+	_draw_layer(SKY_MID, vp, c.x * 0.15, clampf(-dy * 0.08, -90, 90) + 70.0, Color(0.8, 0.8, 0.9))
 	# Near is darkened so it never reads as a roof you can land on.
-	_draw_layer(SKY_NEAR, vp, c.x * 0.35, clampf(-dy * 0.15, -120, 120) + 90.0, Color(0.62, 0.62, 0.78))
+	_draw_layer(SKY_NEAR, vp, c.x * 0.35, clampf(-dy * 0.15, -120, 120) + 170.0, Color(0.55, 0.55, 0.72))
 	# The streets far below fade to black, so the gaps read as drops.
 	var deep := roundf(vp.y * 0.72 - dy * 0.3)
 	for i in 8:
