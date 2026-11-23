@@ -6,7 +6,7 @@ extends RefCounted
 const LEVEL_DIR := "res://levels"
 
 
-## Returns [{id, name, story, booster, color, levels: [{id, path, rules}]}].
+## Returns [{id, name, story, tagline, booster, color, levels: [{id, path, rules}]}].
 static func load_zones() -> Array[Dictionary]:
 	var zones: Array[Dictionary] = []
 	var dirs := Array(DirAccess.get_directories_at(LEVEL_DIR))
@@ -19,6 +19,7 @@ static func load_zones() -> Array[Dictionary]:
 			"id": dir,
 			"name": cfg.get_value("zone", "name", dir),
 			"story": cfg.get_value("zone", "story", ""),
+			"tagline": cfg.get_value("zone", "tagline", ""),
 			"booster": cfg.get_value("zone", "booster", ""),
 			"color": Color(cfg.get_value("zone", "color", "ffb347")),
 			"levels": [],

@@ -38,7 +38,7 @@ A tip card under the room title teaches the game as it goes. Every card shows on
 - **First room walkthrough.** Three steps: move Kip, push the crate, charge it. Each step moves on when the player does it, and the board points at Kip, the crate and the charger (and the arrow buttons in the first step).
 - **New things.** The first time a room has a new tile, crate or tool (ice, arrows, fire, plates, keys and doors, colored crates, cracked floor, heavy crates, teleporters, black holes, move limits, clocks, and each tool), a card explains it and outlines it on the board or around its button. Undo and Restart get a card in the second room.
 - **Stars** are explained on the first win screen.
-- A card closes with **Got it** (or Enter), or by itself after 6 moves. **Skip tips** turns all cards off; the **Tips** button in the top-right corner of the main menu turns them back on and shows every card again.
+- A card closes with **Got it** (or Enter), or by itself after 6 moves. **Skip tips** turns all cards off; **Settings → Tips** on the main menu turns them back on and shows every card again.
 
 The cards and the rules for when each one shows are in `tutorials.gd`. A new tile type needs a topic there and a line in `topics_for`.
 
@@ -129,12 +129,40 @@ Every sound effect is made by `sfx/make_sfx.py` (Python with numpy) from sines, 
 | tool | Hint, Pull, Blast or +5 moves |
 | click | menu and popup buttons |
 
-The speaker in the top-left corner of the main menu (or M) turns sound off and on, and the save file remembers it.
+**Settings → Sound** on the main menu (or M) turns sound off and on, and the save file remembers it.
 
 ## Art
 
 - `art/source/sheet-1..4` hold the board and HUD sprites (128 px tiles). `sprites.gd` maps names to tiles.
 - `art/source/kip/kip-down-128.png` holds Kip's animation frames (6 x 4 grid of 128 px frames, facing down): idle, drive, push and look around. `kip.tres` is the matching SpriteFrames resource, and `kip.gd` picks the frame on the board and rotates it to face left, right or up. Kip drives while stepping, pushes while moving a crate or bumping a wall, and while standing still bobs, blinks every few seconds and looks around after 4 s. The sheet was re-centered from the generated image, whose cells drifted by up to 10 px.
 - `art/source/ui/crate-push-ui-assets.png` holds the menu art: logo, buttons, level tiles, stars, panel frame and zone icons. Some pieces cross the 256 px grid, so `ui_art.gd` and `ui/atlas.json` store the measured bounds of each piece. Buttons and the panel frame are stretched as 9-slice boxes.
-- The mockups in `art/source/ui/` are reference only and are not used in the game.
+- The mockups in `art/source/ui/` (main menu, station map, level select) are what the menus are built to match. They are not used in the game directly.
+- `art/menu/` holds the menu art, and `menu_art.gd` loads it. A drawn piece saved as `art/menu/<name>.png` is used as soon as it exists; until then the game uses a placeholder from `art/menu/placeholder/`, cut out of the mockups by `art/menu/make_placeholders.py` with their labels, numbers and locks painted out. The list of pieces, with sizes, is below.
+- `art/fonts/Fredoka.ttf` (SIL Open Font License, `OFL.txt`) is the rounded font of the menus.
+
+## Menus
+
+The three menu screens copy the mockups' layout: every position in the code is in mockup pixels (1080 x 1920), scaled onto the 720 x 1280 stage, which stays centered on taller or wider screens with a dimmed copy of the background around it. The game draws all text (names, numbers, the progress line) itself.
+
+- **Main menu**: Play opens the station map, Continue starts the next unsolved room (or replays the ending once everything is solved; it is greyed out on a new save), Settings opens Sound and Tips.
+- **Station map**: the seven rooms from the Warehouse at the bottom to the Core at the top. Solved zones get a teal check, the current zone an orange frame and Kip's pin, locked zones a padlock and a darker room. The route is lit up to Kip.
+- **Level select**: the zone's one-line tagline (`tagline` in `zone.cfg`), a progress bar, and two columns of tiles with the room's stars, a padlock, or the orange frame on the next room.
+
+`tests/menu_shots.gd` saves the menus in the mockups' states, for comparing side by side:
+
+```bash
+xvfb-run godot --path games/2026-w46-crate-push --rendering-driver opengl3 --script tests/menu_shots.gd -- --out=/tmp/menus --size=720x1280
+```
+
+| Piece | Size (mockup px) | Placeholder |
+| --- | --- | --- |
+| `menu-bg` | 1080 x 1920 | mockup with the buttons painted out (logo and Kip included) |
+| `logo`, `kip-crate` | about 900 x 480, 800 x 520 | none: drawn on top only when they exist |
+| `button-play`, `button-continue`, `button-settings` | 900 x 190 / 170 / 160 | cut from the mockup |
+| `map-bg` | 1080 x 1920 | mockup with names, route, locks and pin painted out |
+| `map-node-lock`, `map-node-check`, `kip-pin` | 110 x 110, 140 x 170 | cut from the mockup |
+| `header-plate` | 660 x 150 | none: the placeholder backgrounds have the plate painted in |
+| `back-button` | 150 x 150 | cut from the mockup |
+| `levels-bg` (or `levels-bg-<zone>`) | 1080 x 1920 | mockup with the tiles and text painted out |
+| `level-tile`, `level-tile-locked` | 390 x 240 | cut from the mockup |
 - `art/icon/` holds the app icon: Kip pushing a crate, seen from above. `icon-1024.png` is the original (rounded corners, transparent outside them). `icon.png` in the project root is a 512 px copy and is the project icon, which the web export also uses as the favicon. `android-192.png` is the legacy Android launcher icon, and `android-foreground-432.png` / `android-background-432.png` are the adaptive icon layers, with the robot and crate shrunk to fit inside a round mask. The files in `art/icon/` are left out of the exported game; the Android export reads them directly.

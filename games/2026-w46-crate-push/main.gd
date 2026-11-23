@@ -14,8 +14,8 @@ const HOLD_DELAY := 0.3  # hold an arrow this long to start walking
 const HOLD_STEP := 0.14
 const MARGIN := 20.0
 const MAX_CELL := 110.0
-const HERO_CELL := 120.0  # menu animation tile size
-const HERO_LOOP := 4.4    # seconds per loop of the menu animation
+const MOCK := 720.0 / 1080.0  # menu mockups (1080 x 1920) -> stage pixels
+const STAGE := Vector2(720, 1280)
 const END_FIRST := 0.9    # ending: when the first zone module lights up
 const END_GAP := 0.42     # ending: seconds between zone modules
 const END_CORE := 0.5     # ending: pause before the core lights after the last module
@@ -57,6 +57,13 @@ const C_WALL_TOP := Color("59628f")
 const C_WALL_SIDE := Color("2c3150")
 const C_WALL_HI := Color("8a93c2")
 const C_TARGET := Color("3fe0c0")
+## The station map's rooms in mockup pixels, bottom (Warehouse) to top (Core).
+const MAP_ROOMS := [
+	Rect2(110, 1525, 865, 195), Rect2(110, 1295, 865, 205), Rect2(110, 1090, 865, 175),
+	Rect2(110, 895, 865, 170), Rect2(110, 700, 865, 165), Rect2(110, 495, 865, 175),
+	Rect2(110, 265, 865, 200),
+]
+const MAP_NODE_X := 845.0  # the route line, in mockup pixels
 const TARGET_GLOW := {"a": Color("ff6b6b"), "b": Color("5aa9ff"), "c": Color("6fd08c")}
 
 var zones: Array[Dictionary] = []
@@ -111,13 +118,10 @@ var title_taps := 0
 # UI
 var ui: Control
 var menu_screen: Control
-var menu_stars: Label
-var menu_hero: Control
 var menu_t := 0.0
 var continue_button: Button
 var map_screen: Control
-var zone_list: VBoxContainer
-var map_stars: Label
+var zone_list: Control  # the map's rooms, drawn route and nodes
 var levels_screen: Control
 var ending_screen: Control
 var ending_art: Control
@@ -129,7 +133,9 @@ var ending_lit := 0  # zone modules lit so far (the core counts as one more)
 var levels_title: Label
 var levels_story: Label
 var levels_progress: Control
-var levels_grid: GridContainer
+var levels_grid: Control
+var levels_bg: Texture2D
+var levels_current_tile: Button
 var play_hud: Control
 var title_label: Label
 var info_label: Label
@@ -145,8 +151,10 @@ var overlay_stars: Control
 var overlay_text: Label
 var overlay_buttons: HBoxContainer
 var overlay_items: GridContainer
-var tips_button: Button
-var sound_button: Button
+var settings_open := false
+var settings_panel: Control
+var settings_sound: Button
+var settings_tips: Button
 
 # Tip cards
 var card: PanelContainer
@@ -176,19 +184,11 @@ func _ready() -> void:
 
 func _show_menu() -> void:
 	screen = "menu"
-	var got := 0
-	var total := 0
-	for z in zones:
-		for l in z.levels:
-			got += best.get(l.id, 0)
-			total += 3
-	menu_stars.text = "%d / %d" % [got, total]
 	# Once every room is solved, Continue becomes a way to watch the ending again.
 	var all_done := not best.is_empty() and _next_level() == Vector2i(-1, -1)
-	continue_button.visible = not best.is_empty()
-	continue_button.text = "The End" if all_done else "Continue"
-	tips_button.text = "Tips: Off" if tips_off else "Tips: On"
-	_update_sound_button()
+	continue_button.disabled = best.is_empty()
+	continue_button.set_meta("text", "The End" if all_done else "Continue")
+	continue_button.queue_redraw()
 	_set_screen(menu_screen)
 
 
@@ -211,88 +211,102 @@ func _continue() -> void:
 		_show_ending()
 
 
+func _show_settings() -> void:
+	settings_sound.set_meta("text", "Sound: On" if sound_on else "Sound: Off")
+	settings_tips.set_meta("text", "Tips: Off" if tips_off else "Tips: On")
+	settings_sound.queue_redraw()
+	settings_tips.queue_redraw()
+	settings_panel.show()
+	settings_open = true
+
+
+func _hide_settings() -> void:
+	settings_panel.hide()
+	settings_open = false
+
+
 func _show_map() -> void:
 	screen = "map"
 	for c in zone_list.get_children():
 		c.queue_free()
-	var total := 0
-	var got := 0
-	var current := _next_level().x
-	for i in zones.size():
-		var z: Dictionary = zones[i]
-		var open := _zone_open(i)
-		var stars := 0
-		for l in z.levels:
-			stars += best.get(l.id, 0)
-		total += z.levels.size() * 3
-		got += stars
-		zone_list.add_child(_zone_row(i, open, stars, i == current))
-	map_stars.text = "%d / %d" % [got, total]
+	for i in mini(zones.size(), MAP_ROOMS.size()):
+		var r := _mock_r(MAP_ROOMS[i])
+		var b := _button("", _on_room.bind(i), false)
+		_flat(b)
+		b.position = r.position
+		b.size = r.size
+		zone_list.add_child(b)
+		var name := _menu_label(zones[i].name, 68, Color.WHITE)
+		name.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
+		name.autowrap_mode = TextServer.AUTOWRAP_WORD
+		var n := _mock_r(Rect2(150, MAP_ROOMS[i].position.y - 6, 460, MAP_ROOMS[i].size.y))
+		name.position = n.position
+		name.size = n.size
+		if not _zone_open(i):
+			name.modulate = Color(0.9, 0.92, 0.96)
+		zone_list.add_child(name)
 	_set_screen(map_screen)
 
 
-func _zone_row(i: int, open: bool, stars: int, current: bool) -> Button:
-	var z: Dictionary = zones[i]
-	var b := _button("", _open_zone.bind(i))
-	b.custom_minimum_size = Vector2(0, 150)
-	b.disabled = not open
-	var m := Vector4(44, 44, 44, 44)
-	var c := Vector4(30, 18, 30, 18)
-	b.add_theme_stylebox_override("normal", UiArt.box("panel-frame", m, c))
-	b.add_theme_stylebox_override("hover", UiArt.box("panel-frame", m, c, Color(1.15, 1.15, 1.2)))
-	b.add_theme_stylebox_override("pressed", UiArt.box("panel-frame", m, c, Color(0.8, 0.8, 0.85)))
-	b.add_theme_stylebox_override("disabled", UiArt.box("panel-frame", m, c, Color(0.6, 0.6, 0.65)))
-	var row := HBoxContainer.new()
-	row.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	row.add_theme_constant_override("separation", 22)
-	b.add_child(row)
-	row.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	row.offset_left = 40
-	row.offset_right = -34
-	row.offset_top = 16
-	row.offset_bottom = -16
-	var icon := _ui_rect(UiArt.zone_icon(z.id), Vector2(104, 104))
-	if not open:
-		icon.modulate = Color(0.45, 0.45, 0.5)
-	row.add_child(icon)
-	var names := VBoxContainer.new()
-	names.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	names.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	names.alignment = BoxContainer.ALIGNMENT_CENTER
-	row.add_child(names)
-	var name_label := _label(z.name, 36, C_TEXT if open else C_DIM)
-	name_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
-	names.add_child(name_label)
-	var sub := _label("Zone %d" % (i + 1), 22, z.color if open else C_DIM)
-	sub.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
-	names.add_child(sub)
-	if open:
-		var count := HBoxContainer.new()
-		count.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		count.add_theme_constant_override("separation", 6)
-		count.add_child(_ui_rect("star-filled", Vector2(40, 40)))
-		var n := _label("%d/%d" % [stars, z.levels.size() * 3], 28, C_STAR)
-		n.autowrap_mode = TextServer.AUTOWRAP_OFF
-		count.add_child(n)
-		row.add_child(count)
+func _on_room(i: int) -> void:
+	if _zone_open(i):
+		sfx.play("click", 0.04)
+		_open_zone(i)
 	else:
-		row.add_child(_ui_rect("padlock", Vector2(56, 64)))
-	if current:
-		var ring := Panel.new()
-		ring.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		var st := StyleBoxFlat.new()
-		st.draw_center = false
-		st.border_color = C_ORANGE
-		st.set_border_width_all(6)
-		st.set_corner_radius_all(20)
-		ring.add_theme_stylebox_override("panel", st)
-		b.add_child(ring)
-		ring.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-		ring.offset_left = 4
-		ring.offset_top = 4
-		ring.offset_right = -4
-		ring.offset_bottom = -4
-	return b
+		sfx.play("bump", 0.05)
+
+
+func _zone_done(i: int) -> bool:
+	var ls: Array = zones[i].levels
+	return best.has(ls[ls.size() - 1].id)
+
+
+## Room shading, the route, the nodes and Kip's pin, over the map background.
+func _draw_map() -> void:
+	var c := zone_list
+	var n := mini(zones.size(), MAP_ROOMS.size())
+	if n == 0:
+		return
+	var cur := _next_level().x
+	var pin := cur if cur >= 0 else n - 1
+	var pulse := 0.5 + 0.5 * sin(menu_t * 3.0)
+	for i in n:
+		if not _zone_open(i):
+			c.draw_colored_polygon(_chamfer(_mock_r(MAP_ROOMS[i]), 16.0), Color(0.03, 0.04, 0.1, 0.42))
+	if cur >= 0:
+		var ring := _chamfer(_mock_r(MAP_ROOMS[cur]).grow(5.0), 20.0)
+		ring.append(ring[0])
+		c.draw_polyline(ring, Color(C_ORANGE, 0.18 + 0.2 * pulse), 16.0, true)
+		c.draw_polyline(ring, C_ORANGE, 6.0, true)
+	var x := MAP_NODE_X * MOCK
+	var ys: Array[float] = []
+	for i in n:
+		ys.append(_mock_r(MAP_ROOMS[i]).get_center().y)
+	c.draw_line(Vector2(x, ys[0]), Vector2(x, ys[n - 1]), Color("8e9bab"), 9.0)
+	c.draw_line(Vector2(x, ys[0]), Vector2(x, ys[pin]), Color(C_TARGET, 0.3), 22.0)
+	c.draw_line(Vector2(x, ys[0]), Vector2(x, ys[pin]), Color("3ff5e0"), 9.0)
+	var node := 68.0
+	for i in n:
+		if i == pin:
+			continue
+		var tex := MenuArt.tex("map-node-check" if _zone_done(i) else "map-node-lock")
+		if tex:
+			c.draw_texture_rect(tex, Rect2(Vector2(x, ys[i]) - Vector2.ONE * node / 2.0, Vector2.ONE * node), false)
+	var pin_tex := MenuArt.tex("kip-pin")
+	if pin_tex:
+		# The pin's round head sits on the node; its tip points down the route.
+		var sz := Vector2(87, 120)
+		var head := Vector2(43, 47)
+		var bob := sin(menu_t * 2.6) * 4.0
+		c.draw_texture_rect(pin_tex, Rect2(Vector2(x, ys[pin] + bob) - head, sz), false)
+
+
+## A rect with its corners cut off, like the station's rooms.
+func _chamfer(r: Rect2, k: float) -> PackedVector2Array:
+	return PackedVector2Array([
+		r.position + Vector2(k, 0), Vector2(r.end.x - k, r.position.y), r.position + Vector2(r.size.x, k),
+		r.end - Vector2(0, k), r.end - Vector2(k, 0), Vector2(r.position.x + k, r.end.y),
+		Vector2(r.position.x, r.end.y - k), r.position + Vector2(0, k)])
 
 
 func _open_zone(i: int) -> void:
@@ -311,54 +325,97 @@ func _open_zone(i: int) -> void:
 func _show_levels() -> void:
 	screen = "levels"
 	var z: Dictionary = zones[zone_i]
+	var key: String = z.id.substr(z.id.find("-") + 1)
+	levels_bg = MenuArt.tex("levels-bg-" + key) if MenuArt.drawn("levels-bg-" + key) else MenuArt.tex("levels-bg")
+	levels_screen.get_child(0).queue_redraw()
 	levels_title.text = z.name.to_upper()
-	levels_title.add_theme_color_override("font_color", z.color)
-	levels_story.text = z.story.get_slice("\n", 0)
+	levels_story.text = z.tagline if z.tagline != "" else z.story.get_slice(". ", 0)
 	for c in levels_grid.get_children():
 		c.queue_free()
+	levels_current_tile = null
 	var done := 0
 	var current := _next_level()
-	for i in z.levels.size():
+	var count: int = z.levels.size()
+	# Two columns like the mockup; rows get closer only past five.
+	var rows := ceili(count / 2.0)
+	var pitch := minf(274.0, (1800.0 - 438.0 - 244.0) / maxf(1.0, rows - 1))
+	for i in count:
 		var id: String = z.levels[i].id
 		if best.has(id):
 			done += 1
-		var open := _level_open(zone_i, i)
-		var art := "level-unlocked"
-		if not open:
-			art = "level-locked"
-		elif current == Vector2i(zone_i, i):
-			art = "level-current"
 		var b := _button("", _start_level.bind(zone_i, i))
-		b.custom_minimum_size = Vector2(196, 190)
-		b.disabled = not open
-		var m := Vector4(48, 48, 48, 48)
-		b.add_theme_stylebox_override("normal", UiArt.box(art, m))
-		b.add_theme_stylebox_override("hover", UiArt.box(art, m, Vector4.ZERO, Color(1.12, 1.12, 1.15)))
-		b.add_theme_stylebox_override("pressed", UiArt.box(art, m, Vector4.ZERO, Color(0.8, 0.8, 0.85)))
-		b.add_theme_stylebox_override("disabled", UiArt.box(art, m))
-		if open:
-			var box := VBoxContainer.new()
-			box.mouse_filter = Control.MOUSE_FILTER_IGNORE
-			box.alignment = BoxContainer.ALIGNMENT_CENTER
-			box.add_theme_constant_override("separation", -4)
-			b.add_child(box)
-			box.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-			box.offset_top = 10
-			box.offset_bottom = -34
-			box.add_child(_label(str(i + 1), 60, C_TEXT))
-			box.add_child(_stars_view(best.get(id, 0), 18.0))
+		_flat(b)
+		b.disabled = not _level_open(zone_i, i)
+		var r := _mock_r(Rect2(127.0 + 436.0 * (i % 2), 438.0 + pitch * (i / 2), 390, 244))
+		b.position = r.position
+		b.size = r.size
+		b.set_meta("n", i + 1)
+		b.set_meta("stars", best.get(id, 0))
+		b.set_meta("current", current == Vector2i(zone_i, i))
+		if current == Vector2i(zone_i, i):
+			levels_current_tile = b
+		b.draw.connect(_draw_tile.bind(b))
 		levels_grid.add_child(b)
 	levels_progress.set_meta("done", done)
-	levels_progress.set_meta("total", z.levels.size())
+	levels_progress.set_meta("total", count)
 	levels_progress.queue_redraw()
 	_set_screen(levels_screen)
+
+
+func _draw_tile(b: Button) -> void:
+	var locked := b.disabled
+	var mode := b.get_draw_mode()
+	var mod := Color.WHITE
+	var push := Vector2.ZERO
+	if mode == BaseButton.DRAW_PRESSED or mode == BaseButton.DRAW_HOVER_PRESSED:
+		mod = Color(0.82, 0.84, 0.9)
+		push = Vector2(0, 3)
+	elif mode == BaseButton.DRAW_HOVER:
+		mod = Color(1.1, 1.1, 1.14)
+	var r := Rect2(push, b.size)
+	if b.get_meta("current"):
+		var glow := StyleBoxFlat.new()
+		glow.draw_center = false
+		glow.border_color = Color(C_ORANGE, 0.2 + 0.2 * sin(menu_t * 3.0))
+		glow.set_border_width_all(14)
+		glow.set_corner_radius_all(36)
+		b.draw_style_box(glow, r.grow(12))
+	var tex := MenuArt.tex("level-tile-locked" if locked else "level-tile")
+	if tex:
+		b.draw_texture_rect(tex, r, false, mod)
+	if b.get_meta("current"):
+		var ring := StyleBoxFlat.new()
+		ring.draw_center = false
+		ring.border_color = C_ORANGE
+		ring.set_border_width_all(6)
+		ring.set_corner_radius_all(30)
+		b.draw_style_box(ring, r.grow(7))
+	var font := MenuArt.font()
+	var num := str(b.get_meta("n"))
+	var fs := 86
+	var w := font.get_string_size(num, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x
+	var base := Vector2((r.size.x - w) / 2.0, push.y + 86.0)
+	b.draw_string(font, base + Vector2(0, 4), num, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, Color(0.02, 0.04, 0.1, 0.55))
+	b.draw_string(font, base, num, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, Color("c9ced8") if locked else Color.WHITE)
+	var cy := push.y + 117.0
+	if locked:
+		var lock := Rect2(Vector2(r.size.x / 2.0 - 25.0, cy - 30.0), Vector2(50, 60))
+		b.draw_texture_rect_region(UiArt.SHEET, lock, UiArt.MAP["padlock"], Color(0.85, 0.87, 0.9))
+		return
+	var got: int = b.get_meta("stars")
+	for k in 3:
+		var c := Vector2(r.size.x / 2.0 + (k - 1) * 55.0, cy)
+		var sz := Vector2(52, 50)
+		b.draw_texture_rect_region(UiArt.SHEET, Rect2(c - sz / 2.0, sz),
+				UiArt.MAP["star-filled" if k < got else "star-empty"])
 
 
 func _set_screen(c: Control) -> void:
 	hold_dir = Vector2i.ZERO
 	for s in [menu_screen, map_screen, levels_screen, play_hud, ending_screen]:
 		s.visible = s == c
-	overlay.hide()
+	_hide_overlay()
+	_hide_settings()
 	queue_redraw()
 
 
@@ -866,6 +923,8 @@ func _on_key(event: InputEventKey) -> void:
 		KEY_ENTER, KEY_KP_ENTER, KEY_SPACE:
 			if not overlay.visible and screen == "play" and tip_now != "" and card_ok.visible and not event.echo:
 				_next_tip()
+			elif settings_open and not event.echo:
+				_hide_settings()
 			elif overlay.visible and not event.echo:
 				var bs := overlay_buttons.get_children()
 				if not bs.is_empty():
@@ -883,7 +942,9 @@ func _on_board(pos: Vector2) -> bool:
 
 
 func _back() -> void:
-	if overlay.visible and (screen != "play" or finished == ""):
+	if settings_open:
+		_hide_settings()
+	elif overlay.visible and (screen != "play" or finished == ""):
 		_hide_overlay()  # popups on the map, or the restart question
 	elif screen == "play":
 		_show_levels()
@@ -913,9 +974,12 @@ func _on_title_tapped() -> void:
 # --- Animation & drawing --------------------------------------------------------
 
 func _process(delta: float) -> void:
-	if screen == "menu":
-		menu_t = fmod(menu_t + delta, HERO_LOOP)
-		menu_hero.queue_redraw()
+	# The map's pin bobs and the current room and level glow.
+	menu_t = fmod(menu_t + delta, TAU * 10.0)
+	if screen == "map":
+		zone_list.queue_redraw()
+	elif screen == "levels" and levels_current_tile:
+		levels_current_tile.queue_redraw()
 	if screen == "ending":
 		_ending_tick(delta)
 	if screen != "play":
@@ -1404,7 +1468,7 @@ func _skip_tips() -> void:
 	_save_progress()
 	tip_queue.clear()
 	_hide_card()
-	_toast("Tips off. Turn them on again from the main menu.")
+	_toast("Tips off. Turn them on again in Settings on the main menu.")
 
 
 func _toggle_tips() -> void:
@@ -1412,7 +1476,8 @@ func _toggle_tips() -> void:
 	if not tips_off:
 		tips_seen.clear()  # turning tips back on shows every card again
 	_save_progress()
-	_show_menu()
+	if settings_open:
+		_show_settings()
 
 
 func _toggle_sound() -> void:
@@ -1420,14 +1485,10 @@ func _toggle_sound() -> void:
 	sfx.muted = not sound_on
 	sfx.play("click")
 	_save_progress()
-	_update_sound_button()
-	if screen != "menu":
+	if settings_open:
+		_show_settings()
+	elif screen == "play":
 		_toast("Sound on" if sound_on else "Sound off")
-
-
-func _update_sound_button() -> void:
-	if sound_button:
-		sound_button.icon = UiArt.tex("sound-on" if sound_on else "sound-off")
 
 
 ## One sound for what Kip did this step, plus one for anything it set off.
@@ -1621,227 +1682,278 @@ func _build_ui() -> void:
 	_build_overlay()
 
 
+# --- Menu screens ---------------------------------------------------------------
+# Laid out like the mockups in art/source/ui/: positions are in mockup pixels
+# (1080 x 1920), scaled by MOCK onto a 720 x 1280 stage that sits in the middle
+# of any screen. The art comes from MenuArt (art/menu/).
+
+func _mock(x: float, y: float, w: float, h: float) -> Rect2:
+	return Rect2(x * MOCK, y * MOCK, w * MOCK, h * MOCK)
+
+
+func _mock_r(r: Rect2) -> Rect2:
+	return Rect2(r.position * MOCK, r.size * MOCK)
+
+
+## A full-window screen with its background, and the 720 x 1280 stage in its
+## middle. Returns the stage; the screen is its parent.
+func _menu_stage(bg: Callable) -> Control:
+	var s := _full_rect(ui)
+	var back := _full_rect(s)
+	back.draw.connect(func() -> void: _draw_backdrop(back, bg.call()))
+	var stage := Control.new()
+	stage.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	stage.size = STAGE
+	s.add_child(stage)
+	var fit := func() -> void:
+		stage.position = ((s.size - STAGE) / 2.0).floor()
+		back.queue_redraw()
+	s.resized.connect(fit)
+	fit.call_deferred()
+	return stage
+
+
+## The background at full brightness behind the stage, and a dimmed copy
+## filling the rest of a screen that is wider or taller than 9:16.
+func _draw_backdrop(c: Control, tex: Texture2D) -> void:
+	c.draw_rect(Rect2(Vector2.ZERO, c.size), C_BG)
+	if tex == null:
+		return
+	var ts := tex.get_size()
+	var stage := Rect2(((c.size - STAGE) / 2.0).floor(), STAGE)
+	var k := maxf(c.size.x / ts.x, c.size.y / ts.y)
+	var cover := Rect2((c.size - ts * k) / 2.0, ts * k)
+	if not cover.is_equal_approx(stage):
+		c.draw_texture_rect(tex, cover, false, Color(0.3, 0.32, 0.4))
+	c.draw_texture_rect(tex, stage, false)
+
+
+func _menu_label(text: String, mock_size: float, color: Color) -> Label:
+	var l := _label(text, roundi(mock_size * MOCK), color)
+	l.add_theme_font_override("font", MenuArt.font())
+	l.add_theme_constant_override("outline_size", 0)
+	l.add_theme_color_override("font_shadow_color", Color(0.02, 0.04, 0.1, 0.6))
+	l.add_theme_constant_override("shadow_offset_x", 0)
+	l.add_theme_constant_override("shadow_offset_y", 3)
+	l.add_theme_constant_override("line_spacing", -8)
+	return l
+
+
+func _flat(b: Button) -> void:
+	var empty := StyleBoxEmpty.new()
+	for st in ["normal", "hover", "pressed", "disabled", "focus", "hover_pressed"]:
+		b.add_theme_stylebox_override(st, empty)
+
+
+## A title plate (drawn art if there is any; the placeholder backgrounds have
+## the plate painted in) with its text. Returns the label.
+func _menu_title(stage: Control, plate: Rect2, text_rect: Rect2, mock_size: float) -> Label:
+	if MenuArt.drawn("header-plate"):
+		var t := TextureRect.new()
+		t.texture = MenuArt.tex("header-plate")
+		t.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		t.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		t.position = plate.position
+		t.size = plate.size
+		stage.add_child(t)
+	var l := _menu_label("", mock_size, Color.WHITE)
+	l.autowrap_mode = TextServer.AUTOWRAP_OFF
+	l.position = text_rect.position
+	l.size = text_rect.size
+	stage.add_child(l)
+	return l
+
+
+## The orange square back button of the mockups.
+func _menu_back(stage: Control, r: Rect2, action: Callable) -> void:
+	var b := _button("", action)
+	_flat(b)
+	b.position = r.position
+	b.size = r.size
+	b.draw.connect(func() -> void:
+		var mode := b.get_draw_mode()
+		var pressed := mode == BaseButton.DRAW_PRESSED or mode == BaseButton.DRAW_HOVER_PRESSED
+		var mod := Color(0.82, 0.82, 0.86) if pressed else (Color(1.1, 1.1, 1.1) if mode == BaseButton.DRAW_HOVER else Color.WHITE)
+		var tex := MenuArt.tex("back-button")
+		if tex:
+			b.draw_texture_rect(tex, Rect2(Vector2(0, 3 if pressed else 0), b.size), false, mod))
+	stage.add_child(b)
+
+
+## A menu button drawn from its art, with an icon ("play", "gear" or "") and
+## its label (meta "text") on top.
+func _art_button(art: String, text: String, icon: String, mock_size: float, r: Rect2, action: Callable) -> Button:
+	var b := _button("", action)
+	_flat(b)
+	b.position = r.position
+	b.size = r.size
+	b.set_meta("text", text)
+	b.draw.connect(func() -> void:
+		var mode := b.get_draw_mode()
+		var mod := Color.WHITE
+		var push := Vector2.ZERO
+		if mode == BaseButton.DRAW_DISABLED:
+			mod = Color(0.6, 0.62, 0.68, 0.8)
+		elif mode == BaseButton.DRAW_PRESSED or mode == BaseButton.DRAW_HOVER_PRESSED:
+			mod = Color(0.85, 0.85, 0.88)
+			push = Vector2(0, 4)
+		elif mode == BaseButton.DRAW_HOVER:
+			mod = Color(1.08, 1.08, 1.1)
+		var tex := MenuArt.tex(art)
+		if tex:
+			b.draw_texture_rect(tex, Rect2(push, b.size), false, mod)
+		var font := MenuArt.font()
+		var fs := roundi(mock_size * MOCK)
+		var label: String = b.get_meta("text")
+		var tw := font.get_string_size(label, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x
+		var iw := 0.0
+		if icon == "play":
+			iw = 70.0
+		elif icon == "gear":
+			iw = 76.0
+		var gap := 52.0 if icon != "" else 0.0
+		var x := (b.size.x - iw - gap - tw) / 2.0
+		# The art has a raised bottom edge, so the face is a little above center.
+		var mid := push.y + b.size.y * 0.47
+		var ink := Color(1, 1, 1, mod.a)
+		var shade := Color(0.05, 0.05, 0.12, 0.3 * mod.a)
+		if icon == "play":
+			var tri := PackedVector2Array([Vector2(x, mid - 38), Vector2(x + iw, mid), Vector2(x, mid + 38)])
+			b.draw_colored_polygon(tri, ink)
+		elif icon == "gear":
+			_draw_gear(b, Vector2(x + iw / 2.0, mid), iw / 2.0, ink, Color(Color("4b5873"), mod.a))
+		var base := Vector2(x + iw + gap, mid + (font.get_ascent(fs) - font.get_descent(fs)) / 2.0 - 2.0)
+		b.draw_string(font, base + Vector2(0, 4), label, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, shade)
+		b.draw_string(font, base, label, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, ink))
+	return b
+
+
+## A solid gear: eight teeth around a disc, with a hole in the hole color.
+func _draw_gear(c: CanvasItem, center: Vector2, r: float, ink: Color, hole: Color) -> void:
+	for k in 8:
+		var a := TAU * k / 8.0
+		var d := Vector2.from_angle(a)
+		var side := d.orthogonal() * r * 0.2
+		var root := center + d * r * 0.62
+		var tip := center + d * r
+		c.draw_colored_polygon(PackedVector2Array([root - side * 1.15, tip - side * 0.85, tip + side * 0.85, root + side * 1.15]), ink)
+	c.draw_circle(center, r * 0.74, ink, true, -1.0, true)
+	c.draw_circle(center, r * 0.32, hole, true, -1.0, true)
+
+
 func _build_menu() -> void:
-	menu_screen = _full_rect(ui)
-	var col := VBoxContainer.new()
-	col.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	col.add_theme_constant_override("separation", 26)
-	col.alignment = BoxContainer.ALIGNMENT_CENTER
-	menu_screen.add_child(col)
-	col.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	_cap_width(col, 60, 600)
-	col.offset_top = 100
-	col.offset_bottom = -40
-	var logo := _ui_rect("logo", Vector2(460, 380))
-	logo.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
-	logo.mouse_filter = Control.MOUSE_FILTER_STOP
-	logo.gui_input.connect(func(e: InputEvent) -> void:
+	var stage := _menu_stage(func() -> Texture2D: return MenuArt.tex("menu-bg"))
+	menu_screen = stage.get_parent()
+	# Drawn layers; the placeholder background has the logo and Kip painted in.
+	for layer in [["kip-crate", _mock(140, 590, 820, 540)], ["logo", _mock(100, 95, 880, 500)]]:
+		if MenuArt.drawn(layer[0]):
+			var t := TextureRect.new()
+			t.texture = MenuArt.tex(layer[0])
+			t.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+			t.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+			t.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			t.position = layer[1].position
+			t.size = layer[1].size
+			stage.add_child(t)
+	var logo_tap := Control.new()
+	logo_tap.position = _mock(110, 100, 860, 480).position
+	logo_tap.size = _mock(110, 100, 860, 480).size
+	logo_tap.gui_input.connect(func(e: InputEvent) -> void:
 		if e is InputEventMouseButton and e.pressed:
 			_on_title_tapped())
-	col.add_child(logo)
-	# Kip pushing a crate onto a charger, on a loop, with the game's own sprites.
-	menu_hero = Control.new()
-	menu_hero.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	menu_hero.custom_minimum_size = Vector2(HERO_CELL * 4.0, HERO_CELL)
-	menu_hero.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
-	menu_hero.draw.connect(_draw_menu_hero)
-	col.add_child(menu_hero)
-	col.add_child(_label("Kip the cargo robot is restarting a dark space station, one battery crate at a time.", 26, C_DIM))
-	var gap := Control.new()
-	gap.custom_minimum_size = Vector2(0, 20)
-	gap.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	col.add_child(gap)
-	var play := _primary_button("Play", _show_map)
-	play.custom_minimum_size = Vector2(0, 140)
-	play.add_theme_font_size_override("font_size", 56)
-	col.add_child(play)
-	continue_button = _button("Continue", _continue)
-	continue_button.custom_minimum_size = Vector2(0, 118)
-	col.add_child(continue_button)
-	var count := HBoxContainer.new()
-	count.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	count.alignment = BoxContainer.ALIGNMENT_CENTER
-	count.add_theme_constant_override("separation", 10)
-	count.add_child(_ui_rect("star-filled", Vector2(44, 44)))
-	menu_stars = _label("", 30, C_STAR)
-	menu_stars.autowrap_mode = TextServer.AUTOWRAP_OFF
-	count.add_child(menu_stars)
-	col.add_child(count)
-	# Tips toggle in the top-right corner, so it is never pushed off a short
-	# screen by the Continue button.
-	tips_button = _button("", _toggle_tips)
-	tips_button.custom_minimum_size = Vector2(200, 80)
-	tips_button.add_theme_font_size_override("font_size", 26)
-	menu_screen.add_child(tips_button)
-	tips_button.set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT)
-	tips_button.offset_left = -224
-	tips_button.offset_right = -24
-	tips_button.offset_top = 24
-	tips_button.offset_bottom = 104
-	# Sound on/off in the top-left corner, opposite the tips toggle.
-	sound_button = _button("", _toggle_sound, false)
-	sound_button.icon = UiArt.tex("sound-on")
-	sound_button.icon_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	sound_button.expand_icon = true
-	sound_button.add_theme_constant_override("icon_max_width", 56)
-	menu_screen.add_child(sound_button)
-	sound_button.set_anchors_and_offsets_preset(Control.PRESET_TOP_LEFT)
-	sound_button.offset_left = 24
-	sound_button.offset_right = 124
-	sound_button.offset_top = 24
-	sound_button.offset_bottom = 104
-
-
-## The menu's little scene: Kip walks right, pushes the crate two cells onto
-## the charger, the crate lights up, then everything fades and starts again.
-func _draw_menu_hero() -> void:
-	var t := menu_t
-	var smooth := func(a: float, b: float) -> float:
-		var k := clampf((t - a) / (b - a), 0.0, 1.0)
-		return k * k * (3.0 - 2.0 * k)
-	# Kip goes cell 0 -> 1 -> 2, the crate 1 -> 2 -> 3 (the charger).
-	var step: float = smooth.call(0.7, 1.15) + smooth.call(1.5, 1.95)
-	var done := t >= 1.95
-	var fade: float = 1.0 - smooth.call(3.6, 4.0) + smooth.call(4.05, HERO_LOOP)
-	if t < 3.6:
-		fade = 1.0
-	if t >= 4.0:  # faded out: fade back in on the starting picture
-		step = 0.0
-		done = false
-	var c := HERO_CELL
-	var mod := Color(1, 1, 1, fade)
-	var cell_rect := func(x: float) -> Rect2:
-		return Rect2(Vector2(x * c, 0), Vector2(c, c))
-	var spr := func(name: String, r: Rect2) -> void:
-		var m: Array = Sprites.MAP[name]
-		menu_hero.draw_texture_rect_region(Sprites.sheet(m[0]), r, Rect2(m[1] * 128, m[2] * 128, 128, 128), mod)
-	# A strip of floor under the scene
-	var floor := Rect2(Vector2(0, c * 0.08), Vector2(c * 4.0, c * 0.84))
-	menu_hero.draw_rect(floor, Color(C_FLOOR, 0.9))
-	for i in range(1, 4):
-		menu_hero.draw_line(Vector2(i * c, floor.position.y), Vector2(i * c, floor.end.y), C_FLOOR_LINE, 2.0)
-	if not done:
-		spr.call("target", cell_rect.call(3.0))
-	var box: Rect2 = cell_rect.call(1.0 + step).grow(-c * 0.1)
-	if done:
-		var glow := 0.3 + 0.15 * sin(menu_t * 6.0)
-		menu_hero.draw_circle(box.get_center(), c * 0.5, Color(C_TARGET, glow * fade), true, -1.0, true)
-	spr.call("crate-on-target" if done else "crate", box)
-	# Kip leans in a little while pushing, with the push frames playing.
-	var push := 0.0
-	var tex := Kip.idle_frame(menu_t)
-	if t > 0.55 and t < 2.05:
-		push = 0.06
-		tex = Kip.frame(&"push", menu_t)
-	var kr: Rect2 = cell_rect.call(step + push)
-	menu_hero.draw_set_transform(kr.get_center(), Kip.angle(Vector2i.RIGHT))
-	menu_hero.draw_texture_rect(tex, Rect2(-kr.size / 2.0, kr.size), false, mod)
-	menu_hero.draw_set_transform(Vector2.ZERO)
+	stage.add_child(logo_tap)
+	stage.add_child(_art_button("button-play", "Play", "play", 128, _mock(92, 1185, 894, 217), _show_map))
+	continue_button = _art_button("button-continue", "Continue", "", 104, _mock(95, 1433, 887, 184), _continue)
+	stage.add_child(continue_button)
+	stage.add_child(_art_button("button-settings", "Settings", "gear", 100, _mock(95, 1648, 887, 184), _show_settings))
+	# Settings: a popup over the menu with the same buttons.
+	settings_panel = ColorRect.new()
+	(settings_panel as ColorRect).color = Color(0.03, 0.04, 0.09, 0.82)
+	menu_screen.add_child(settings_panel)
+	settings_panel.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	var box := Control.new()
+	box.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	box.size = STAGE
+	settings_panel.add_child(box)
+	var fit := func() -> void: box.position = ((settings_panel.size - STAGE) / 2.0).floor()
+	settings_panel.resized.connect(fit)
+	fit.call_deferred()
+	var title := _menu_label("SETTINGS", 96, Color.WHITE)
+	var tr := _mock(90, 560, 900, 140)
+	title.position = tr.position
+	title.size = tr.size
+	box.add_child(title)
+	settings_sound = _art_button("button-settings", "", "", 92, _mock(95, 760, 887, 184), _toggle_sound)
+	box.add_child(settings_sound)
+	settings_tips = _art_button("button-settings", "", "", 92, _mock(95, 975, 887, 184), _toggle_tips)
+	box.add_child(settings_tips)
+	box.add_child(_art_button("button-play", "Done", "", 110, _mock(92, 1225, 894, 217), _hide_settings))
+	settings_panel.hide()
 
 
 func _build_map() -> void:
-	map_screen = _full_rect(ui)
-	var col := VBoxContainer.new()
-	col.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	col.add_theme_constant_override("separation", 18)
-	map_screen.add_child(col)
-	col.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	_cap_width(col, 28, 664)
-	col.offset_top = 40
-	col.offset_bottom = -30
-	var top := HBoxContainer.new()
-	top.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	top.add_theme_constant_override("separation", 16)
-	col.add_child(top)
-	top.add_child(_back_button(_show_menu))
-	var title := _label("STATION MAP", 44, C_TEXT)
-	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	top.add_child(title)
-	var count := HBoxContainer.new()
-	count.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	count.add_theme_constant_override("separation", 4)
-	count.custom_minimum_size = Vector2(96, 0)
-	count.add_child(_ui_rect("star-filled", Vector2(34, 34)))
-	map_stars = _label("", 24, C_STAR)
-	map_stars.autowrap_mode = TextServer.AUTOWRAP_OFF
-	count.add_child(map_stars)
-	top.add_child(count)
-	var scroll := ScrollContainer.new()
-	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
-	col.add_child(scroll)
-	zone_list = VBoxContainer.new()
-	zone_list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	zone_list.add_theme_constant_override("separation", 12)
-	scroll.add_child(zone_list)
+	var stage := _menu_stage(func() -> Texture2D: return MenuArt.tex("map-bg"))
+	map_screen = stage.get_parent()
+	zone_list = Control.new()
+	zone_list.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	zone_list.size = STAGE
+	zone_list.draw.connect(_draw_map)
+	stage.add_child(zone_list)
+	_menu_title(stage, _mock(220, 15, 640, 135), _mock(230, 25, 620, 112), 80).text = "STATION MAP"
+	_menu_back(stage, _mock(19, 24, 148, 123), _show_menu)
 
 
 func _build_levels() -> void:
-	levels_screen = _full_rect(ui)
-	var col := VBoxContainer.new()
-	col.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	col.add_theme_constant_override("separation", 22)
-	levels_screen.add_child(col)
-	col.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	_cap_width(col, 32, 656)
-	col.offset_top = 40
-	col.offset_bottom = -40
-	var top := HBoxContainer.new()
-	top.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	top.add_theme_constant_override("separation", 16)
-	col.add_child(top)
-	top.add_child(_back_button(_show_map))
-	levels_title = _label("", 46, C_TEXT)
-	levels_title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	top.add_child(levels_title)
-	var spacer := Control.new()
-	spacer.custom_minimum_size = Vector2(96, 0)
-	spacer.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	top.add_child(spacer)
-	levels_story = _label("", 26, C_DIM)
-	col.add_child(levels_story)
+	var stage := _menu_stage(func() -> Texture2D: return levels_bg)
+	levels_screen = stage.get_parent()
+	levels_title = _menu_title(stage, _mock(195, 15, 745, 175), _mock(215, 40, 700, 120), 96)
+	_menu_back(stage, _mock(35, 40, 153, 138), _show_map)
+	levels_story = _menu_label("", 58, Color.WHITE)
+	var sr := _mock(50, 200, 980, 90)
+	levels_story.position = sr.position
+	levels_story.size = sr.size
+	stage.add_child(levels_story)
 	levels_progress = Control.new()
 	levels_progress.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	levels_progress.custom_minimum_size = Vector2(0, 52)
+	var pr := _mock(95, 300, 895, 88)
+	levels_progress.position = pr.position
+	levels_progress.size = pr.size
 	levels_progress.set_meta("done", 0)
 	levels_progress.set_meta("total", 1)
-	var font := ThemeDB.fallback_font
 	levels_progress.draw.connect(func() -> void:
 		var done: int = levels_progress.get_meta("done")
 		var total: int = maxi(1, levels_progress.get_meta("total"))
 		var r := Rect2(Vector2.ZERO, levels_progress.size)
 		var back := StyleBoxFlat.new()
-		back.bg_color = Color("10131f")
-		back.border_color = Color("59628f")
-		back.set_border_width_all(3)
-		back.set_corner_radius_all(26)
+		back.bg_color = Color("0a1220")
+		back.border_color = Color("63738f")
+		back.set_border_width_all(4)
+		back.set_corner_radius_all(int(r.size.y / 2.0))
+		back.anti_aliasing = true
 		levels_progress.draw_style_box(back, r)
 		if done > 0:
+			var inner := r.grow(-10)
+			inner.size.x = maxf(inner.size.y * 1.4, inner.size.x * done / total)
 			var fill := StyleBoxFlat.new()
-			fill.bg_color = C_STAR
-			fill.set_corner_radius_all(20)
-			var inner := r.grow(-7)
-			inner.size.x = maxf(inner.size.y, inner.size.x * done / total)
+			fill.bg_color = Color("1de9c8")
+			fill.set_corner_radius_all(int(inner.size.y / 2.0))
 			levels_progress.draw_style_box(fill, inner)
+			var shine := StyleBoxFlat.new()
+			shine.bg_color = Color(1, 1, 1, 0.18)
+			shine.set_corner_radius_all(int(inner.size.y / 4.0))
+			levels_progress.draw_style_box(shine, Rect2(inner.position + Vector2(10, 4), Vector2(inner.size.x - 20, inner.size.y * 0.3)))
+		var font := MenuArt.font()
 		var text := "%d / %d COMPLETE" % [done, total]
-		var w := font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, 24).x
-		var pos := Vector2(r.size.x - w - 26, r.size.y / 2 + 9)
-		levels_progress.draw_string_outline(font, pos, text, HORIZONTAL_ALIGNMENT_LEFT, -1, 24, 6, C_INK)
-		levels_progress.draw_string(font, pos, text, HORIZONTAL_ALIGNMENT_LEFT, -1, 24, C_TEXT))
-	col.add_child(levels_progress)
-	var scroll := ScrollContainer.new()
-	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
-	col.add_child(scroll)
-	var center := CenterContainer.new()
-	center.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	center.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	scroll.add_child(center)
-	levels_grid = GridContainer.new()
-	levels_grid.columns = 3
-	levels_grid.add_theme_constant_override("h_separation", 26)
-	levels_grid.add_theme_constant_override("v_separation", 22)
-	center.add_child(levels_grid)
+		var fs := 32
+		var w := font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x
+		var pos := Vector2(r.size.x - w - 24, r.size.y / 2.0 + 11)
+		var on_fill := done > 0 and r.grow(-10).position.x + maxf(r.size.y, (r.size.x - 20) * done / total) > pos.x
+		levels_progress.draw_string(font, pos, text, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, Color("06302c") if on_fill else Color("4ff2dc")))
+	stage.add_child(levels_progress)
+	levels_grid = Control.new()
+	levels_grid.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	levels_grid.size = STAGE
+	stage.add_child(levels_grid)
 
 
 func _build_play() -> void:
