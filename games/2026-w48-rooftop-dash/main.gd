@@ -1219,7 +1219,8 @@ func _draw_steam(o: Dictionary) -> void:
 	var height := World.WALL_RISE + 160.0
 	for i in 14:
 		var k := fposmod(time * 0.55 + i / 14.0, 1.0)
-		var px := vx + sin(k * 9.0 + i) * 14.0 - k * 50.0
+		# The plume leans toward the wall, along the way it carries you.
+		var px := vx + sin(k * 9.0 + i) * 14.0 + k * (float(o.rise_x) - vx) * 0.9
 		var py := floor_y - 50.0 - k * height
 		var f := 1 + mini(int(k * 4.0), 3)
 		var size := Vector2(32, 32) * S * (0.7 + k * 0.9)
@@ -1549,12 +1550,49 @@ func _draw_wire_posts(w: Dictionary) -> void:
 		draw_rect(Rect2(p.x - 4, top, 2, h), WIRE_EDGE.darkened(0.3))
 		draw_rect(Rect2(p.x - 12, top + 6, 24, 6), WIRE_DARK)
 		draw_rect(Rect2(p.x - 12, top + 6, 24, 2), WIRE_EDGE)
+		if w.get("live", false):
+			_danger_sign(Vector2(p.x, top + 70.0))
+
+
+## A yellow high-voltage sign with a lightning bolt, on a live wire's pole.
+func _danger_sign(c: Vector2) -> void:
+	var dark := Color("140c14")
+	for row in 12:
+		var half := 2.0 + row * 1.6
+		draw_rect(Rect2(c.x - half - 2.0, c.y - 18.0 + row * 3.0, half * 2.0 + 4.0, 3.0), dark)
+	for row in 11:
+		var half := 1.0 + row * 1.5
+		draw_rect(Rect2(c.x - half, c.y - 15.0 + row * 3.0, half * 2.0, 3.0), Color("ffd23a"))
+	# The bolt.
+	draw_rect(Rect2(c.x - 1.0, c.y - 9.0, 4.0, 8.0), dark)
+	draw_rect(Rect2(c.x - 3.0, c.y - 2.0, 6.0, 3.0), dark)
+	draw_rect(Rect2(c.x - 3.0, c.y + 1.0, 4.0, 8.0), dark)
 
 
 func _draw_wire(w: Dictionary) -> void:
 	var pts := World.wire_points(w, int((w.bx - w.ax) / S))
-	for p in pts:
-		var q := (p / S).round() * S
+	var live: bool = w.get("live", false)
+	if live:
+		# A humming blue glow around the live wire, pulsing.
+		var pulse := 0.5 + 0.5 * sin(time * 9.0 + w.ax * 0.01)
+		for i in range(0, pts.size(), 3):
+			var q: Vector2 = (pts[i] / S).round() * S
+			draw_rect(Rect2(q - Vector2(4, 9), Vector2(8, 18)), Color(0.4, 0.85, 1.0, 0.10 + 0.08 * pulse))
+			draw_rect(Rect2(q - Vector2(4, 5), Vector2(8, 10)), Color(0.5, 0.9, 1.0, 0.14 + 0.1 * pulse))
+		for p in pts:
+			var q: Vector2 = (p / S).round() * S
+			draw_rect(Rect2(q - Vector2(1, 2), Vector2(S, S * 2.0)), Color("2a6a9a"))
+			draw_rect(Rect2(q - Vector2(1, 2), Vector2(S, S)), Color("c8f4ff"))
+		# Little arcs jumping off it.
+		for j in 4:
+			var i := (int(time * 24.0) * 5 + j * 13) % pts.size()
+			if (int(time * 18.0) + j) % 2 == 0:
+				var q: Vector2 = (pts[i] / S).round() * S
+				var dir := 1.0 if j % 2 == 0 else -1.0
+				for z in 3:
+					draw_rect(Rect2(q + Vector2(z * 4.0 * dir - 2.0, 4.0 + z * 5.0 * dir - 2.0) + Vector2(0, (z % 2) * 3.0), Vector2(4, 4)), Color("9fe8ff"))
+	for p in ([] if live else pts):
+		var q: Vector2 = (p / S).round() * S
 		draw_rect(Rect2(q - Vector2(1, 2), Vector2(S, S * 2.0)), WIRE_DARK)
 		draw_rect(Rect2(q - Vector2(1, 2), Vector2(S, S)), WIRE_EDGE)
 	# A live wire over an AC unit crackles all the time, so it reads as danger.
@@ -1562,7 +1600,7 @@ func _draw_wire(w: Dictionary) -> void:
 		for j in 3:
 			var i := (int(time * 20.0) * 7 + j * 11) % pts.size()
 			if (int(time * 15.0) + j) % 3 != 0:
-				var q := (pts[i] / S).round() * S
+				var q: Vector2 = (pts[i] / S).round() * S
 				draw_rect(Rect2(q - Vector2(6, 8), Vector2(4, 4)), Color("9fe8ff"))
 				draw_rect(Rect2(q + Vector2(4, -4), Vector2(4, 4)), Art.GOLD)
 				draw_rect(Rect2(q - Vector2(2, 2), Vector2(4, 4)), Color.WHITE)

@@ -34,7 +34,7 @@ const WIRE_HIGH := 370.0
 const WIRE_SAG := 30.0
 ## Live wires low over AC units: above a tapped jump's head (158 + 96 px),
 ## below a held one's (281 + 96 px), even where the wire sags.
-const LIVE_HIGH := 300.0
+const LIVE_HIGH := 340.0
 const LIVE_REACH := 150.0     # how far the wire runs past the unit each side
 const LIVE_FROM_M := 400.0
 const AC_SIZE := Vector2(78, 62)   # the art at 2x
@@ -754,7 +754,7 @@ func _gen_steam(prev: Dictionary, v: float) -> void:
 		"x0": a.x1 - v * 0.95, "x1": a.x1 - v * 0.5,
 		"y0": a.y - LAUNDRY_LINE, "y1": a.y - LAUNDRY_LOW,
 		"tx": b.x0 + 120.0, "ty": b.y - 30.0, "rise_x": b.x0 - 16.0, "arc": 0.0, "slow": STEAM_SLOW,
-		"vent": a.x1 - 40.0})
+		"vent": a.x1 - v * 0.72 + 16.0})  # under the laundry, so the lift starts where the steam is
 
 
 ## The next puzzle point: one not met yet if any has just unlocked, else
