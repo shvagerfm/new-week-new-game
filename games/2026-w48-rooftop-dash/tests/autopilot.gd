@@ -125,7 +125,7 @@ func _count(from: World, to: World) -> void:
 	for o in to.obstacles:
 		if o.x1 > from.x and o.x1 <= to.x:
 			stats[o.kind] = stats.get(o.kind, 0) + 1
-			if o.get("grab", false) and o.used:
+			if (o.get("grab", false) or o.kind == "window") and o.used:
 				rides[o.kind] = rides.get(o.kind, 0) + 1
 	for wr in to.wires:
 		if wr.ax > from.x - 20.0 and wr.ax <= to.x:

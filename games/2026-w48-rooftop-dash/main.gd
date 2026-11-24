@@ -414,7 +414,7 @@ func _process(delta: float) -> void:
 func _cam_target_y() -> float:
 	var ahead := world.ref_y
 	for r in world.roofs:
-		if r.x0 > world.x:
+		if r.x0 > world.x and not r.has("hole_top"):   # the flat, not the tall roof above it
 			ahead = r.base
 			break
 	var vp := get_viewport_rect().size
@@ -442,7 +442,8 @@ func _on_event(e: Dictionary) -> void:
 		"grab":
 			grab_t = world.t
 			var names := {"bat": "BAT RIDE!", "laundry": "STEAM LIFT!", "awning": "BOING!",
-				"zipline": "ZIPLINE!", "cradle": "GOING UP!", "crane": "CRANE!  TAP TO LET GO"}
+				"zipline": "ZIPLINE!", "cradle": "GOING UP!", "crane": "CRANE!  TAP TO LET GO",
+				"window": "WINDOW!  NOW TAP"}
 			_popup(Vector2(world.x, world.y - 170.0), "%s  +%d" % [names.get(e.kind, "NICE!"), e.points], Art.GOLD)
 			match e.kind:
 				"bat":
@@ -451,6 +452,8 @@ func _on_event(e: Dictionary) -> void:
 					sfx.play("cloth")
 				"awning":
 					sfx.play("jump", 0.0, 0.0, 0.7)
+				"window":
+					sfx.play("curtain")
 				_:
 					sfx.play("clang", 0.05, -6.0)
 			sfx.play("best", 0.0, -8.0)
@@ -705,6 +708,9 @@ func _tile(dst: Rect2, src: Rect2) -> void:
 
 
 func _draw_roof(r: Dictionary, c: Vector2, vp: Vector2) -> void:
+	if r.get("inside", false):
+		_draw_flat(r)
+		return
 	var y := roundf(r.y / S) * S
 	if r.crumble and r.t >= 0.0 and r.vy == 0.0:
 		y += S * float(randi_range(-1, 1))
@@ -720,7 +726,7 @@ func _draw_roof(r: Dictionary, c: Vector2, vp: Vector2) -> void:
 	_draw_facade(r, y + CAP_H * S, bottom, tint, c, vp)
 	# The bonus edge: land in this strip to grow the multiplier. It glows on
 	# roofs still ahead, with chevrons pointing at the edge.
-	if x0 > world.x and state != State.TITLE:
+	if x0 > world.x and state != State.TITLE and not r.has("hole_top"):
 		var pulse := 0.55 + 0.35 * sin(time * 6.0)
 		var zone := World.EDGE_ZONE
 		draw_rect(Rect2(x0, y - 6, zone, 6), Color(Art.GOLD, pulse))
@@ -1081,9 +1087,14 @@ func _draw_trick_glow(o: Dictionary) -> void:
 
 
 func _draw_obstacle(o: Dictionary) -> void:
-	if o.get("grab", false) and not o.used:
+	if (o.get("grab", false) or o.kind == "window") and not o.used:
 		_draw_trick_glow(o)
 	match o.kind:
+		"window":
+			return
+		"furniture":
+			_draw_furniture(o)
+			return
 		"skylight":
 			_draw_skylight(o)
 			return
@@ -1203,6 +1214,117 @@ func _draw_steam(o: Dictionary) -> void:
 		var size := Vector2(32, 32) * S * (0.7 + k * 0.9)
 		var r := Rect2((Vector2(px, py) - size * 0.5).snapped(Vector2(S, S)), size.snapped(Vector2(S, S)))
 		draw_texture_rect_region(STEAM_TEX, r, Rect2(f * 32, 0, 32, 32), Color(1, 1, 1, 0.8 * (1.0 - k * 0.6)))
+
+
+# --- The flat ------------------------------------------------------------
+## A flat cut through a tall building: wallpaper, a wooden floor, lamps on
+## the low ceiling, an open window at each end with its curtains blowing.
+## Drawn over the building's facade, before the furniture and the courier.
+const FLAT_WALL := Color("4a2f45")
+const FLAT_STRIPE := Color("553650")
+const FLAT_DADO := Color("3a2336")
+const FLAT_FLOOR := Color("7a4a2a")
+const FLAT_FLOOR_HI := Color("b07040")
+const FLAT_CEIL := Color("2a1c2c")
+const FLAT_FRAME := Color("c8b8a0")
+const CURTAIN := Color("d0605a")
+const CURTAIN_DARK := Color("8a3a40")
+
+
+func _draw_flat(f: Dictionary) -> void:
+	var x0: float = f.x0
+	var x1: float = f.x1
+	var top: float = f.ceil
+	var fl: float = f.y
+	var h := fl - top
+	# Warm light spills out of both windows, so the way in shows from afar.
+	for i in 3:
+		var g := 40.0 + i * 50.0
+		draw_rect(Rect2(x0 - g, top + 20.0 - i * 10.0, g, h - 20.0 + i * 20.0), Color(1.0, 0.75, 0.4, 0.06))
+		draw_rect(Rect2(x1, top + 20.0 - i * 10.0, g, h - 20.0 + i * 20.0), Color(1.0, 0.75, 0.4, 0.05))
+	draw_rect(Rect2(x0, top, x1 - x0, h), FLAT_WALL)
+	var sx := x0 + 16.0
+	while sx < x1 - 8.0:
+		draw_rect(Rect2(sx, top + 12.0, 8.0, h - 70.0), FLAT_STRIPE)
+		sx += 40.0
+	draw_rect(Rect2(x0, fl - 60.0, x1 - x0, 60.0), FLAT_DADO)
+	draw_rect(Rect2(x0, fl - 62.0, x1 - x0, 4.0), FLAT_FRAME.darkened(0.4))
+	# Pictures on the wall and lamps on the ceiling, spread along the room.
+	var n := int((x1 - x0) / 260.0)
+	for i in n:
+		var px := x0 + 150.0 + i * 260.0 + float(Art.hash3(int(x0), i, 3) % 40)
+		if px > x1 - 120.0:
+			break
+		var kind := Art.hash3(int(x0), i, 9) % 3
+		var pic := Rect2(px, top + 90.0, 44.0 if kind != 1 else 32.0, 36.0 if kind != 1 else 44.0)
+		draw_rect(pic.grow(4.0), Color("2a1a14"))
+		draw_rect(pic, [Color("4a78ff"), Color("4caf50"), Color("ff8a3d")][kind].darkened(0.35))
+		draw_rect(Rect2(pic.position + Vector2(6, pic.size.y - 12), Vector2(pic.size.x - 12, 6)), Color(1, 1, 1, 0.18))
+		var lx := px - 60.0
+		draw_rect(Rect2(lx - 1.0, top, 2.0, 40.0), Color("1a1420"))
+		draw_rect(Rect2(lx - 16.0, top + 40.0, 32.0, 12.0), Art.GOLD.darkened(0.2))
+		draw_circle(Vector2(lx, top + 58.0), 34.0, Color(1.0, 0.85, 0.5, 0.10))
+		draw_rect(Rect2(lx - 6.0, top + 52.0, 12.0, 6.0), Color("fff2c0"))
+	draw_rect(Rect2(x0, top, x1 - x0, 14.0), FLAT_CEIL)
+	# The floor boards.
+	draw_rect(Rect2(x0, fl, x1 - x0, 14.0), FLAT_FLOOR)
+	draw_rect(Rect2(x0, fl, x1 - x0, 4.0), FLAT_FLOOR_HI)
+	var bx := x0 + 24.0
+	while bx < x1:
+		draw_rect(Rect2(bx, fl + 4.0, 2.0, 10.0), FLAT_FLOOR.darkened(0.3))
+		bx += 48.0
+	# The window frames, open, with curtains billowing in the draught.
+	for end in [[x0, 1.0], [x1, -1.0]]:
+		var wx: float = end[0]
+		var dir: float = end[1]
+		var jamb := Rect2(wx - (0.0 if dir > 0.0 else 12.0), top, 12.0, h)
+		draw_rect(Rect2(jamb.position.x - 6.0, top - 10.0, 24.0, 14.0), FLAT_FRAME)
+		draw_rect(Rect2(jamb.position.x - 10.0, fl - 2.0, 32.0, 10.0), FLAT_FRAME)
+		draw_rect(Rect2(jamb.position.x, top + 4.0, 4.0, 16.0), FLAT_FRAME)
+		var sway := sin(time * 3.0 + wx * 0.01)
+		for k in 8:
+			var cy := top + 4.0 + k * 16.0
+			var wv := 30.0 - k * 2.0 + sway * (6.0 + k * 2.0)
+			var cx := wx + (8.0 if dir > 0.0 else -8.0 - wv)
+			draw_rect(Rect2(cx, cy, wv, 16.0), CURTAIN if k % 2 == 0 else CURTAIN.darkened(0.1))
+			draw_rect(Rect2(cx + (wv - 4.0 if dir > 0.0 else 0.0), cy, 4.0, 16.0), CURTAIN_DARK)
+
+
+## A sofa, a chest of drawers or a TV on its stand, in the flat's way.
+func _draw_furniture(o: Dictionary) -> void:
+	var r := Rect2(o.x0, o.y0, o.x1 - o.x0, o.y1 - o.y0)
+	var out := Color("140c14")
+	match int(o.style):
+		0:  # sofa: back, cushions, arms
+			draw_rect(r.grow(2.0), out)
+			draw_rect(Rect2(r.position.x, r.position.y, r.size.x, 28.0), Color("8a3a5a"))
+			draw_rect(Rect2(r.position.x, r.position.y + 26.0, r.size.x, 22.0), Color("b0506e"))
+			draw_rect(Rect2(r.position.x + r.size.x * 0.5 - 1.0, r.position.y + 26.0, 2.0, 22.0), Color("6a2a44"))
+			draw_rect(Rect2(r.position.x, r.position.y + 14.0, 12.0, 34.0), Color("6a2a44"))
+			draw_rect(Rect2(r.end.x - 12.0, r.position.y + 14.0, 12.0, 34.0), Color("6a2a44"))
+			draw_rect(Rect2(r.position.x + 6.0, r.end.y - 8.0, 6.0, 8.0), out)
+			draw_rect(Rect2(r.end.x - 12.0, r.end.y - 8.0, 6.0, 8.0), out)
+		1:  # chest of drawers with a lamp on top
+			var body := Rect2(r.position.x + 6.0, r.position.y + 12.0, r.size.x - 12.0, r.size.y - 12.0)
+			draw_rect(body.grow(2.0), out)
+			draw_rect(body, Color("7a5030"))
+			for k in 3:
+				var dy := body.position.y + 4.0 + k * 13.0
+				draw_rect(Rect2(body.position.x + 4.0, dy, body.size.x - 8.0, 10.0), Color("94643c"))
+				draw_rect(Rect2(body.get_center().x - 4.0, dy + 4.0, 8.0, 2.0), Art.GOLD)
+			draw_rect(Rect2(r.position.x + 20.0, r.position.y - 4.0, 4.0, 16.0), out)
+			draw_rect(Rect2(r.position.x + 10.0, r.position.y - 14.0, 24.0, 12.0), Art.GOLD)
+			draw_circle(Vector2(r.position.x + 22.0, r.position.y - 6.0), 22.0, Color(1.0, 0.85, 0.5, 0.12))
+		_:  # TV on a low stand, the screen flickering
+			var stand := Rect2(r.position.x, r.end.y - 20.0, r.size.x, 20.0)
+			draw_rect(stand.grow(2.0), out)
+			draw_rect(stand, Color("3a3040"))
+			var tv := Rect2(r.position.x + 10.0, r.position.y, r.size.x - 20.0, r.size.y - 22.0)
+			draw_rect(tv.grow(2.0), out)
+			draw_rect(tv, Color("1a1a24"))
+			var glow := 0.55 + 0.25 * sin(time * 17.0 + o.x0)
+			draw_rect(tv.grow(-4.0), Color(0.35, 0.55, 1.0, glow))
+			draw_rect(Rect2(tv.position + Vector2(8, 8), Vector2(18, 4)), Color(1, 1, 1, 0.35))
 
 
 ## The awning sticks out of the tall building's wall, its bracket on the

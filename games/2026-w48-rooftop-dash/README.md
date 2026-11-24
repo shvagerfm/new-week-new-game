@@ -44,6 +44,7 @@ The game also pauses when the window or tab loses focus.
   - Zipline (from 550 m): a handle at jump height by the roof's edge, on a cable down to a much lower roof too far to reach. Jump into the handle and ride down. Only where the city has room below.
   - Window-washer's cradle (from 700 m): a tall building with a cradle hanging in the gap in front of it, below your roof. Hop down into it and it winches you up.
   - Crane hook (from 850 m): a hook over a huge gap, the far roof higher up. Grab it and it swings you down and up; tap to let go on the way up (a window of about 0.2 s). Hold on too long and you swing into the wall. The generator checks every crane has a fair moment to let go (`World.crane_window`).
+  - Through the flat (from 950 m): a building far too tall to jump, across an alley, with one open window high in its wall. Only a held jump launched in a window of about 0.14 s gets you through it (`World.window_span` sizes the alley). Inside the ceiling is low, so a held jump hits it: hop the furniture with short taps, then run out the back window onto a lower roof. The flat's furniture is drawn in code for now.
 - **Score** is metres plus bonus points. The best score and the best distance are saved. A flag marks the best distance on the roofs, and a line counts down the last 100 m to it.
 
 ## Windows

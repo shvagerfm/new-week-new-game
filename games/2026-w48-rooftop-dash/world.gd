@@ -76,9 +76,16 @@ const CRANE_DIP := 300.0      # how far the swing dips
 const CRANE_KICK := -600.0    # the push you get when you let go
 const CRANE_HANG := 130.0     # feet below the hook while hanging
 const CRANE_WINDOW := 9       # ticks you can let go on and still make it
+## Through the flat: a tall building with one open window in its wall.
+const SILL_RISE := 200.0      # the window sill, above the roof in front of it
+const ROOM_H := 310.0         # floor to ceiling inside the flat
+const FLAT_TOP := 170.0       # building above the flat's ceiling
+const WINDOW_T := 0.14        # seconds of launch you get to hit the window
+const FURNITURE_SIZE := Vector2(96, 60)
+
 ## Which puzzle points can show up from which distance (metres).
 const PIECES := {"bat": 230.0, "awning": 330.0, "laundry": 450.0, "zipline": 550.0,
-	"cradle": 700.0, "crane": 850.0}
+	"cradle": 700.0, "crane": 850.0, "window": 950.0}
 
 var rng := RandomNumberGenerator.new()
 ## {id, x0, x1, y, base, crumble, t, vy}. t is -1 until a crumbling roof is touched.
@@ -363,7 +370,7 @@ func _try_land(py: float, ev: Array) -> void:
 	var best := {}
 	var best_top := INF
 	for s in roofs + obstacles:
-		if s.has("kind") and s.kind != "ac":
+		if s.has("kind") and not s.kind in ["ac", "furniture"]:
 			continue
 		var top := _top_of(s)
 		if _support_at(s) and py <= top + 0.5 and y >= top and top < best_top:
@@ -379,6 +386,8 @@ func _try_land(py: float, ev: Array) -> void:
 	jumped = false
 	air_t = 0.0
 	ev.append({"type": "land", "impact": impact})
+	if best.get("inside", false):
+		_enter_flat(best, ev)
 	if best.has("id"):
 		ref_y = best.y
 		if best.crumble and best.t < 0.0:
@@ -397,13 +406,27 @@ func _try_land(py: float, ev: Array) -> void:
 				ev.append({"type": "combo_lost"})
 
 
+## Landing on the flat's floor for the first time: the window trick is done.
+func _enter_flat(f: Dictionary, ev: Array) -> void:
+	for o in obstacles:
+		if o.kind == "window" and o.roof == f.id and not o.used:
+			o.used = true
+			carries += 1
+			var pts := PUZZLE_POINTS * multiplier()
+			bonus += pts
+			ev.append({"type": "grab", "kind": "window", "points": pts})
+
+
 func _collide(px: float, ev: Array) -> void:
 	var body := Rect2(x - HALF_W, y - HEIGHT, HALF_W * 2.0, HEIGHT)
 	for r in roofs:
 		if r.x1 < body.position.x or r.x0 > body.end.x:
 			continue
-		if body.intersects(Rect2(r.x0, r.y + 8.0, r.x1 - r.x0, 4000.0)):
-			_die("wall", ev)
+		# A building with a flat cut through it is solid only down to the
+		# flat's ceiling; the flat's floor is a roof of its own.
+		var depth: float = r.hole_top - r.y - 8.0 if r.has("hole_top") else 4000.0
+		if body.intersects(Rect2(r.x0, r.y + 8.0, r.x1 - r.x0, depth)):
+			_die("ceiling" if r.has("hole_top") and body.position.y > r.hole_top - 40.0 else "wall", ev)
 			return
 	for o in obstacles:
 		if o.get("grab", false):
@@ -413,13 +436,19 @@ func _collide(px: float, ev: Array) -> void:
 				_start_carry(o, ev)
 				return
 			continue
+		if o.kind == "window":
+			# Shut (only in tests), the window is just more wall.
+			if o.kind in no_grab and body.intersects(Rect2(o.x0, o.y0, o.x1 - o.x0, o.y1 - o.y0)):
+				_die("wall", ev)
+				return
+			continue
 		if o.kind == "skylight":
 			# Glass in the roof: running onto it (feet over the pane) breaks it.
 			if grounded and ground.get("id", -1) == o.roof and x > o.x0 + 6.0 and x < o.x1 - 6.0:
 				_die("skylight", ev)
 				return
 			continue
-		var top: float = o.y0 + (6.0 if o.kind == "ac" else 0.0)
+		var top: float = o.y0 + (6.0 if o.kind in ["ac", "furniture"] else 0.0)
 		if body.intersects(Rect2(o.x0, top, o.x1 - o.x0, o.y1 - top)):
 			if not (grounded and ground == o):
 				_die(o.kind, ev)
@@ -450,7 +479,8 @@ func _collect(ev: Array) -> void:
 func revive() -> void:
 	var r := {}
 	for c in roofs:
-		if c.x0 > death_x and not c.crumble and c.t < 0.0 and c.x1 - c.x0 > 120.0:
+		if c.x0 > death_x and not c.crumble and c.t < 0.0 and c.x1 - c.x0 > 120.0 \
+				and not c.has("hole_top"):
 			r = c
 			break
 	if r.is_empty():
@@ -553,6 +583,7 @@ func _gen_roof() -> void:
 			"zipline": _gen_zipline(prev, v)
 			"cradle": _gen_cradle(prev, v)
 			"crane": _gen_crane(prev, v)
+			"window": _gen_window(prev, v)
 		last_piece = kind
 		if not kind in pieces_seen:
 			pieces_seen.append(kind)
@@ -694,7 +725,7 @@ func _pick_piece(m: float, base: float) -> String:
 		if m < PIECES[k]:
 			continue
 		var rise: float = {"laundry": WALL_RISE, "awning": WALL_RISE, "cradle": CRADLE_RISE,
-			"crane": CRANE_UP}.get(k, 0.0)
+			"crane": CRANE_UP, "window": SILL_RISE}.get(k, 0.0)
 		var drop: float = {"zipline": ZIP_DROP_MIN, "bat": 40.0}.get(k, 0.0)
 		if base - rise < -520.0 or base + drop > 520.0:
 			continue
@@ -774,6 +805,70 @@ func _gen_crane(prev: Dictionary, v: float) -> void:
 		"x0": hx - 35.0, "x1": hx + 35.0, "y0": hy - 28.0, "y1": hy + 28.0, "snap_y": feet,
 		"tx": f.x0 - 40.0, "ty": f.y + 60.0, "rise_x": f.x0 - 40.0, "arc": -CRANE_DIP, "slow": 1.0,
 		"pivot_x": (hx + f.x0) * 0.5, "pivot_y": a.y - 440.0})
+
+
+## A building too tall to jump, with a flat cut through it: one open window
+## in the front wall, up where only a well-timed held jump reaches, across an
+## alley you can fall into. Inside the ceiling is low (a held jump hits it)
+## and the furniture is in the way, so you hop it with short taps. You run
+## out through the back window onto a lower roof.
+func _gen_window(prev: Dictionary, v: float) -> void:
+	var x0: float = prev.x1 + reach(v, 0.0, false) * 0.5
+	var a := _add_roof(x0, x0 + v * 2.2, prev.base, false)
+	# The alley: as wide as it can be while a held jump still meets the
+	# window for WINDOW_T seconds of launch.
+	var span := window_span(v, SILL_RISE - 8.0)
+	var gap := snappedf(maxf(span.y - HALF_W - v * WINDOW_T, maxf(span.x - HALF_W, 60.0)), 4.0)
+	var bx0: float = a.x1 + gap
+	var sill: float = a.base - SILL_RISE
+	var ceil_y := sill - ROOM_H
+	var length := v * rng.randf_range(2.6, 3.0)
+	var b := _add_roof(bx0, bx0 + length, ceil_y - FLAT_TOP, false)
+	b.hole_top = ceil_y
+	var f := _add_roof(bx0, b.x1, sill, false)
+	f.inside = true
+	f.ceil = ceil_y
+	obstacles.append({"kind": "window", "used": false, "roof": f.id,
+		"x0": bx0 - 4.0, "x1": bx0 + 12.0, "y0": ceil_y, "y1": sill})
+	# Furniture: a first piece a little after you land, then one more if
+	# there is room, each a tap apart.
+	var tap := reach(v, 0.0, false)
+	var cursor: float = bx0 + v * 0.75
+	for i in 3:
+		var room: float = f.x1 - tap * 0.95 - FURNITURE_SIZE.x - cursor
+		if room < 0.0:
+			break
+		var ox := snappedf(cursor + rng.randf() * minf(room, v * 0.25), 4.0)
+		obstacles.append({"kind": "furniture", "style": rng.randi() % 3, "roof": f.id,
+			"x0": ox, "x1": ox + FURNITURE_SIZE.x, "y0": sill - FURNITURE_SIZE.y, "y1": sill})
+		parcels.append({"x": ox + FURNITURE_SIZE.x * 0.5, "y": sill - FURNITURE_SIZE.y - 70.0, "taken": false})
+		cursor = ox + FURNITURE_SIZE.x + tap + v * 0.3
+	# Out the back and down onto a lower roof.
+	var cx0: float = f.x1 + reach(v, 40.0, false) * 0.35
+	_add_roof(cx0, cx0 + v * 2.2, sill + 40.0, false)
+
+
+## While a full held jump at speed v has its feet at least h above the
+## launch height: (first x, last x) after launch, in px.
+static func window_span(v: float, h: float) -> Vector2:
+	var yy := 0.0
+	var vv := JUMP_V
+	var ht := 0.0
+	var xx := 0.0
+	var first := -1.0
+	for i in 400:
+		var g := GRAVITY
+		if vv < 0.0 and ht < HOLD_MAX:
+			g *= HOLD_GRAVITY
+			ht += DT
+		vv = minf(vv + g * DT, MAX_FALL)
+		yy += vv * DT
+		xx += v * DT
+		if -yy >= h and first < 0.0:
+			first = xx
+		if first >= 0.0 and -yy < h:
+			return Vector2(first, xx - v * DT)
+	return Vector2.ZERO
 
 
 ## How many ticks of the crane's swing you can let go on and still land on
