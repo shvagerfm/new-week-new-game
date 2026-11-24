@@ -711,6 +711,9 @@ func _draw_roof(r: Dictionary, c: Vector2, vp: Vector2) -> void:
 	if r.get("inside", false):
 		_draw_flat(r)
 		return
+	if r.has("balcony"):
+		_draw_balcony(r, c, vp)
+		return
 	var y := roundf(r.y / S) * S
 	if r.crumble and r.t >= 0.0 and r.vy == 0.0:
 		y += S * float(randi_range(-1, 1))
@@ -1095,6 +1098,9 @@ func _draw_obstacle(o: Dictionary) -> void:
 		"furniture":
 			_draw_furniture(o)
 			return
+		"rack":
+			_draw_rack(o)
+			return
 		"skylight":
 			_draw_skylight(o)
 			return
@@ -1288,6 +1294,67 @@ func _draw_flat(f: Dictionary) -> void:
 			var cx := wx + (8.0 if dir > 0.0 else -8.0 - wv)
 			draw_rect(Rect2(cx, cy, wv, 16.0), CURTAIN if k % 2 == 0 else CURTAIN.darkened(0.1))
 			draw_rect(Rect2(cx + (wv - 4.0 if dir > 0.0 else 0.0), cy, 4.0, 16.0), CURTAIN_DARK)
+
+
+# --- Balcony steps --------------------------------------------------------
+const SLAB := Color("9a98b0")
+const SLAB_DARK := Color("4a4860")
+const RAIL := Color("2a2a3a")
+const RAIL_HI := Color("6a6a88")
+const CLOTHES := [Color("e8e0d0"), Color("4a78ff"), Color("ff4d5e"), Color("ffd27a"), Color("4caf50"), Color("c080e0")]
+
+
+## A concrete balcony slab with a railing, its top at y.
+func _slab(x0: float, x1: float, y: float) -> void:
+	draw_rect(Rect2(x0 - 4.0, y, x1 - x0 + 8.0, 16.0), SLAB)
+	draw_rect(Rect2(x0 - 4.0, y + 12.0, x1 - x0 + 8.0, 4.0), SLAB_DARK)
+	draw_rect(Rect2(x0 - 4.0, y - 44.0, x1 - x0 + 8.0, 6.0), RAIL_HI)
+	var px := x0
+	while px <= x1:
+		draw_rect(Rect2(px - 2.0, y - 40.0, 4.0, 40.0), RAIL)
+		px += 16.0
+
+
+func _draw_balcony(r: Dictionary, c: Vector2, vp: Vector2) -> void:
+	if r.has("wall_x0"):
+		# The building behind the balconies, darker so it reads as far.
+		var wall := {"x0": r.wall_x0, "x1": r.wall_x1, "crumble": false}
+		var top: float = r.wall_top
+		draw_rect(Rect2(r.wall_x0 - 8.0, top - 12.0, r.wall_x1 - r.wall_x0 + 16.0, 12.0), Color("2a2440"))
+		_draw_facade(wall, top, c.y + vp.y + 8.0, Color(0.55, 0.55, 0.7), c, vp)
+	var y := roundf(r.y / S) * S
+	# A dark doorway onto the balcony, lit inside.
+	var dx: float = (r.x0 + r.x1) * 0.5 - 36.0
+	draw_rect(Rect2(dx - 6.0, y - 186.0, 84.0, 186.0), Color("1a1420"))
+	draw_rect(Rect2(dx, y - 180.0, 72.0, 180.0), Color(1.0, 0.72, 0.38, 0.55))
+	draw_rect(Rect2(dx + 34.0, y - 180.0, 4.0, 180.0), Color("1a1420"))
+	_slab(r.x0, r.x1, y)
+	if r.x0 > world.x and state != State.TITLE:
+		var pulse := 0.55 + 0.35 * sin(time * 6.0)
+		draw_rect(Rect2(r.x0, y - 6, World.EDGE_ZONE, 6), Color(Art.GOLD, pulse))
+
+
+## The balcony above: its slab and railing, and the washing hanging under
+## it, the lowest piece right at the height that kills.
+func _draw_rack(o: Dictionary) -> void:
+	_slab(o.x0, o.x1, o.y0)
+	var line_y: float = o.y0 + 22.0
+	draw_rect(Rect2(o.x0, line_y - 2.0, o.x1 - o.x0, 2.0), ROPE)
+	var n := maxi(int((o.x1 - o.x0) / 44.0), 2)
+	var sway := sin(time * 2.5 + o.x0 * 0.01) * 3.0
+	for i in n:
+		var gx: float = o.x0 + 8.0 + i * (o.x1 - o.x0 - 16.0) / n
+		var gw := 30.0
+		var long: bool = (i + int(o.style)) % 2 == 0
+		var bottom: float = o.y1 if long else o.y1 - 28.0
+		var col: Color = CLOTHES[(i + int(o.style)) % CLOTHES.size()]
+		var r := Rect2(gx + sway * (1.0 if long else 0.5), line_y, gw, bottom - line_y)
+		draw_rect(r.grow(2.0), Color("140c14"))
+		draw_rect(r, col)
+		draw_rect(Rect2(r.position.x, r.end.y - 6.0, r.size.x, 6.0), col.darkened(0.25))
+		# Drips: it is still wet.
+		if int(time * 3.0 + i) % 3 == 0:
+			draw_rect(Rect2(r.get_center().x, r.end.y + 4.0 + fmod(time * 60.0, 20.0), 2.0, 4.0), Color(0.6, 0.8, 1.0, 0.7))
 
 
 ## A sofa, a chest of drawers or a TV on its stand, in the flat's way.

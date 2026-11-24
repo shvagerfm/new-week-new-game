@@ -78,14 +78,23 @@ const CRANE_HANG := 130.0     # feet below the hook while hanging
 const CRANE_WINDOW := 9       # ticks you can let go on and still make it
 ## Through the flat: a tall building with one open window in its wall.
 const SILL_RISE := 200.0      # the window sill, above the roof in front of it
-const ROOM_H := 310.0         # floor to ceiling inside the flat
+const ROOM_H := 320.0         # floor to ceiling inside the flat
 const FLAT_TOP := 170.0       # building above the flat's ceiling
 const WINDOW_T := 0.14        # seconds of launch you get to hit the window
 const FURNITURE_SIZE := Vector2(96, 60)
 
+## Balcony steps: narrow balconies stepping down a building's face, each
+## with wet laundry hanging from the balcony above, low enough that a held
+## jump hits it.
+const BALC_N := 4
+const BALC_STEP := 70.0       # each balcony, below the one before
+const BALC_W := 0.5           # balcony width, in seconds of running
+const RACK_LOW := 315.0       # bottom of the laundry above, over the balcony floor
+const RACK_TOP := 395.0       # the balcony slab above, over the floor
+
 ## Which puzzle points can show up from which distance (metres).
 const PIECES := {"bat": 230.0, "awning": 330.0, "laundry": 450.0, "zipline": 550.0,
-	"cradle": 700.0, "crane": 850.0, "window": 950.0}
+	"cradle": 700.0, "crane": 850.0, "window": 950.0, "balcony": 1050.0}
 
 var rng := RandomNumberGenerator.new()
 ## {id, x0, x1, y, base, crumble, t, vy}. t is -1 until a crumbling roof is touched.
@@ -584,6 +593,7 @@ func _gen_roof() -> void:
 			"cradle": _gen_cradle(prev, v)
 			"crane": _gen_crane(prev, v)
 			"window": _gen_window(prev, v)
+			"balcony": _gen_balconies(prev, v)
 		last_piece = kind
 		if not kind in pieces_seen:
 			pieces_seen.append(kind)
@@ -726,7 +736,8 @@ func _pick_piece(m: float, base: float) -> String:
 			continue
 		var rise: float = {"laundry": WALL_RISE, "awning": WALL_RISE, "cradle": CRADLE_RISE,
 			"crane": CRANE_UP, "window": SILL_RISE}.get(k, 0.0)
-		var drop: float = {"zipline": ZIP_DROP_MIN, "bat": 40.0}.get(k, 0.0)
+		var drop: float = {"zipline": ZIP_DROP_MIN, "bat": 40.0,
+			"balcony": BALC_STEP * BALC_N - 96.0}.get(k, 0.0)
 		if base - rise < -520.0 or base + drop > 520.0:
 			continue
 		ok.append(k)
@@ -869,6 +880,42 @@ static func window_span(v: float, h: float) -> Vector2:
 		if first >= 0.0 and -yy < h:
 			return Vector2(first, xx - v * DT)
 	return Vector2.ZERO
+
+
+## Balconies stepping down the face of a building, too far apart to skip
+## one and too narrow to land on carelessly. Wet laundry hangs from the
+## balcony above each one, so only short taps work: a held jump runs your
+## head into the washing. The last step is a roof again.
+func _gen_balconies(prev: Dictionary, v: float) -> void:
+	var x0: float = prev.x1 + reach(v, 0.0, false) * 0.5
+	# Up a little first if the city is already low, so the steps fit.
+	var base: float = minf(prev.base, snappedf(520.0 - BALC_STEP * BALC_N, 8.0))
+	var a := _add_roof(x0, x0 + v * 2.0, base, false)
+	var tap := reach(v, BALC_STEP, false)
+	# The gap: past the top of a tap (so you don't rise into the next
+	# balcony's laundry) and short of where it comes down.
+	var rise_x := v * (-JUMP_V / GRAVITY) + HALF_W * 2.0
+	var last := a
+	var first_x := 0.0
+	for i in BALC_N:
+		var gap := snappedf(maxf(tap * rng.randf_range(0.55, 0.7), rise_x), 4.0)
+		var bx0: float = last.x1 + gap
+		var b := _add_roof(bx0, bx0 + v * BALC_W, last.base + BALC_STEP, false)
+		b.balcony = i
+		if i == 0:
+			first_x = bx0
+		obstacles.append({"kind": "rack", "roof": b.id, "x0": b.x0, "x1": b.x1,
+			"y0": b.y - RACK_TOP, "y1": b.y - RACK_LOW, "style": rng.randi() % 4})
+		parcels.append({"x": bx0 - gap * 0.45, "y": last.y - 150.0, "taken": false})
+		last = b
+	# One building behind them all, drawn from the first balcony.
+	for r in roofs:
+		if r.get("balcony", -1) == 0 and r.x0 == first_x:
+			r.wall_x0 = first_x - 30.0
+			r.wall_x1 = last.x1 + 30.0
+			r.wall_top = a.y - RACK_TOP - 60.0
+	var cx0: float = last.x1 + snappedf(maxf(tap * 0.6, rise_x), 4.0)
+	_add_roof(cx0, cx0 + v * 2.2, last.base, false)
 
 
 ## How many ticks of the crane's swing you can let go on and still land on
