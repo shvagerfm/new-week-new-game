@@ -96,6 +96,7 @@ const RACK_TOP := 395.0       # the balcony slab above, over the floor
 ## only while its lights are on.
 const BOARD_PERIOD := 1.5
 const BOARD_ON := 0.95
+const BOARD_LATE := 0.4       # it lights up as you pass this far along it
 const BOARD_W := 0.55         # seconds of running
 const BOARD_UP := 40.0        # its top, above the roof in front of it
 
@@ -626,7 +627,7 @@ func _gen_roof() -> void:
 		last_piece = kind
 		if not kind in pieces_seen:
 			pieces_seen.append(kind)
-		next_piece_m = m + rng.randf_range(200.0, 350.0)
+		next_piece_m = m + rng.randf_range(280.0, 480.0)
 		return
 
 	var launch: float = prev.x1
@@ -957,12 +958,27 @@ func _gen_billboard(prev: Dictionary, v: float) -> void:
 	var w := snappedf(v * BOARD_W, 4.0)
 	var gap := snappedf(maxf(hold * 0.45, (hold * 1.4 - w) * 0.5), 4.0)
 	var bx0: float = a.x1 + gap
+	# You always run at the same speed, so the moment you pass any spot is
+	# known now: the lights come on only as you pass BOARD_LATE of the way
+	# along, so landing early drops you through the dark board.
+	var on_t := time_at(bx0 + w * BOARD_LATE)
 	obstacles.append({"kind": "billboard", "used": false, "roof": a.id,
 		"x0": bx0, "x1": bx0 + w, "y0": a.y - BOARD_UP, "y1": a.y - BOARD_UP + 96.0,
-		"phase": rng.randf() * BOARD_PERIOD})
+		"phase": fposmod(-on_t, BOARD_PERIOD)})
 	parcels.append({"x": bx0 + w * 0.5, "y": a.y - BOARD_UP - 60.0, "taken": false})
 	var cx0: float = bx0 + w + gap
 	_add_roof(cx0, cx0 + v * 2.2, a.base, false)
+
+
+## When the courier, running on from here, reaches x.
+func time_at(at: float) -> float:
+	var tt := t
+	var px := x
+	while px < at:
+		var dx := minf(50.0, at - px)
+		tt += dx / speed_at(px + dx * 0.5)
+		px += dx
+	return tt
 
 
 ## How many ticks of the crane's swing you can let go on and still land on

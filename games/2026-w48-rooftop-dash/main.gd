@@ -443,7 +443,7 @@ func _on_event(e: Dictionary) -> void:
 			grab_t = world.t
 			var names := {"bat": "BAT RIDE!", "laundry": "STEAM LIFT!", "awning": "BOING!",
 				"zipline": "ZIPLINE!", "cradle": "GOING UP!", "crane": "CRANE!  TAP TO LET GO",
-				"window": "WINDOW!  NOW TAP", "billboard": "ON THE BILLBOARD!"}
+				"window": "WINDOW!  NOW TAP", "billboard": "BILLBOARD!"}
 			_popup(Vector2(world.x, world.y - 170.0), "%s  +%d" % [names.get(e.kind, "NICE!"), e.points], Art.GOLD)
 			match e.kind:
 				"bat":
