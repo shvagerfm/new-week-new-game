@@ -9,6 +9,7 @@ This week's game is **landscape** (1280×720), unlike the portrait template: a r
 | Input | Action |
 | --- | --- |
 | Tap, click, Space, Up, W, Enter | Jump. Hold for a higher, longer jump |
+| F, or the corners button left of the speaker | Fullscreen on/off, hiding the browser bars. Hidden where the browser has no fullscreen for pages (iPhone Safari; there, Add to Home Screen does it) |
 | M, or the speaker in the top-right corner | Sound on/off |
 | Esc, P, or the pause button in the top-left corner | Pause |
 

@@ -60,6 +60,7 @@ func _ready() -> void:
 	music = Music.new()
 	add_child(music)
 	_set_muted(muted)
+	_init_fullscreen()
 	_new_world()
 	_show_title()
 
@@ -68,6 +69,8 @@ func _ready() -> void:
 
 func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventScreenTouch:
+		if _fullscreen_button(event):
+			return
 		if event.pressed:
 			if _portrait() or _corner_button(event.position):
 				return
@@ -83,6 +86,8 @@ func _unhandled_input(event: InputEvent) -> void:
 				_on_press()
 		elif event.pressed and k == KEY_M:
 			_set_muted(not muted)
+		elif event.pressed and k == KEY_F and _can_fullscreen:
+			_toggle_fullscreen()
 		elif event.pressed and k in [KEY_ESCAPE, KEY_P]:
 			if state == State.OVER and k == KEY_ESCAPE and results_shown:
 				_to_menu()
@@ -111,6 +116,76 @@ func _release_all() -> void:
 	touches.clear()
 	key_down = false
 	tapped = false
+
+
+# --- Fullscreen --------------------------------------------------------------
+## A button left of the sound button fills the whole screen, hiding the
+## browser's bars. Browsers only allow that inside a user gesture, and on a
+## phone a touch counts as one only when the finger lifts, so the button acts
+## on release. iPhone Safari has no fullscreen for pages, so there the button
+## is hidden (Add to Home Screen is the way to lose the bars on an iPhone).
+var _can_fullscreen := false
+var _fs_armed := false
+
+
+func _init_fullscreen() -> void:
+	if OS.has_feature("web"):
+		_can_fullscreen = bool(JavaScriptBridge.eval(
+			"!!(document.fullscreenEnabled || document.webkitFullscreenEnabled)", true))
+	else:
+		_can_fullscreen = OS.has_feature("pc")
+
+
+func _fullscreen_rect() -> Rect2:
+	var vw := get_viewport_rect().size.x
+	return Rect2(vw - 2.0 * BUTTON - EDGE - 24.0, 24, BUTTON, BUTTON)
+
+
+## Handles a touch (or click) on the fullscreen button: armed on press,
+## toggled on release. True if the event was the button's.
+func _fullscreen_button(event: InputEventScreenTouch) -> bool:
+	if not _can_fullscreen:
+		return false
+	var hit := _fullscreen_rect().grow(12).has_point(event.position)
+	if event.pressed:
+		_fs_armed = hit
+		return hit
+	if _fs_armed:
+		_fs_armed = false
+		if hit:
+			_toggle_fullscreen()
+			sfx.play("click")
+		return true
+	return false
+
+
+func _is_fullscreen() -> bool:
+	if OS.has_feature("web"):
+		return bool(JavaScriptBridge.eval(
+			"!!(document.fullscreenElement || document.webkitFullscreenElement)", true))
+	return DisplayServer.window_get_mode() == DisplayServer.WINDOW_MODE_FULLSCREEN
+
+
+func _toggle_fullscreen() -> void:
+	if OS.has_feature("web"):
+		JavaScriptBridge.eval("""(function () {
+			var d = document, el = d.documentElement;
+			if (d.fullscreenElement || d.webkitFullscreenElement) {
+				(d.exitFullscreen || d.webkitExitFullscreen).call(d);
+				return;
+			}
+			var req = el.requestFullscreen || el.webkitRequestFullscreen;
+			var p = req.call(el, {navigationUI: 'hide'});
+			// On phones, keep it sideways while full screen, where allowed.
+			if (p && p.then) p.then(function () {
+				if (screen.orientation && screen.orientation.lock)
+					screen.orientation.lock('landscape').catch(function () {});
+			}).catch(function () {});
+		})()""", true)
+	elif _is_fullscreen():
+		DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_WINDOWED)
+	else:
+		DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_FULLSCREEN)
 
 
 ## True if the press landed on the sound or pause button (and was handled).
@@ -1233,6 +1308,21 @@ func _draw_buttons(vp: Vector2) -> void:
 	else:
 		draw_rect(Rect2(o + Vector2(30, 12), Vector2(4, 8)), Art.TEXT)
 		draw_rect(Rect2(o + Vector2(38, 6), Vector2(4, 20)), Art.TEXT)
+	# Fullscreen, left of the sound button: corners pointing out, or in to leave.
+	if _can_fullscreen:
+		var fr := _fullscreen_rect()
+		draw_set_transform(fr.position, 0.0, Vector2(k, k))
+		draw_rect(Rect2(0, 0, 72, 72), Color(0.04, 0.05, 0.12, 0.5))
+		# Four L shapes; out of fullscreen they sit in the corners with arms
+		# pointing in, in fullscreen near the middle with arms pointing out.
+		var inward := _is_fullscreen()
+		for c: Vector2 in [Vector2(-1, -1), Vector2(1, -1), Vector2(-1, 1), Vector2(1, 1)]:
+			var tip: Vector2 = Vector2(36, 36) + c * (6.0 if inward else 20.0)
+			var arm: Vector2 = c if inward else -c   # the way the arms point
+			for along: Vector2 in [Vector2(arm.x, 0), Vector2(0, arm.y)]:
+				var end: Vector2 = tip + along * 16.0
+				var r := Rect2(tip, Vector2.ZERO).expand(end).grow(2)
+				draw_rect(r, Art.TEXT)
 	# Pause, top left, while running.
 	if state == State.RUN:
 		draw_set_transform(Vector2(EDGE, 24), 0.0, Vector2(k, k))
