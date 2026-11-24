@@ -168,6 +168,7 @@ func _new_world() -> void:
 
 
 func _start_run() -> void:
+	_cued.clear()
 	state = State.RUN
 	world.start()
 	_release_all()
@@ -596,8 +597,9 @@ const CAP_H := 10.0
 const WIN := Rect2(16, 12, 32, 40)     # the opening in a window cell
 const WIN_W := 32.0
 const WIN_H := 40.0
-const SCENES_FROM_M := 60.0             # no scenes on the first roofs
-const SCENE_CHANCE := 55                # percent of roofs after that
+const SCENES_FROM_M := 150.0            # no scenes on the first roofs
+const SCENE_EVERY_M := 350.0            # at most one scene per stretch this long
+const SCENE_CHANCE := 75                # percent of stretches that get one
 enum Scene {CAT, DISCO, GRANNY, COUPLE, GRANDPA, DOG, MIRROR}
 const DISCO_COLS := [Color("ff4d5e"), Color("4a78ff"), Color("ffd27a"), Color("4caf50"), Color("8a66b8"), Color("ff8a3d")]
 
@@ -640,13 +642,14 @@ func _draw_facade(r: Dictionary, top: float, bottom: float, tint: Color, c: Vect
 	var scene := -1
 	var scene_at := Vector2i(-1, -1)
 	var h := Art.hash3(int(r.x0), 4242)
-	if (r.x0 - world.start_x) / World.PX_PER_M > SCENES_FROM_M and h % 100 < SCENE_CHANCE:
+	var kind := _scene_for(r)
+	if kind >= 0:
 		var wins := []
 		for i in cells.size():
 			if cells[i][2] == 1:
 				wins.append(i)
 		if not wins.is_empty():
-			scene = (h >> 7) % Scene.size()
+			scene = kind
 			scene_at = Vector2i(wins[(h >> 4) % wins.size()], (h >> 11) % 2)
 	var floor_i := 0
 	var yy := top
@@ -670,6 +673,23 @@ func _draw_facade(r: Dictionary, top: float, bottom: float, tint: Color, c: Vect
 				draw_texture_rect_region(FACADE, Rect2(x, yy, w, cw), Rect2(sx, row, w / S, TILE), tint)
 		yy += cw
 		floor_i += 1
+
+
+## Scenes are rare so they surprise: the run is cut into stretches of
+## SCENE_EVERY_M, most stretches pick one spot, and the roof under that spot
+## gets the scene. The kinds take turns, so the same one never comes twice
+## in a row.
+func _scene_for(r: Dictionary) -> int:
+	var m0: float = (r.x0 - world.start_x) / World.PX_PER_M
+	var m1: float = (r.x1 - world.start_x) / World.PX_PER_M
+	var b := int(m0 / SCENE_EVERY_M)
+	var hb := Art.hash3(b, int(world.rng.seed), 777)
+	if hb % 100 >= SCENE_CHANCE:
+		return -1
+	var spot := b * SCENE_EVERY_M + SCENE_EVERY_M * (0.15 + 0.7 * float((hb >> 8) % 1000) / 1000.0)
+	if spot < SCENES_FROM_M or spot < m0 or spot >= m1:
+		return -1
+	return (b * 3 + Art.hash3(int(world.rng.seed), 31) % Scene.size()) % Scene.size()
 
 
 func _draw_room(at: Vector2, h: int) -> void:
@@ -697,25 +717,36 @@ func _draw_scene(kind: int, at: Vector2, r: Dictionary) -> void:
 	match kind:
 		Scene.CAT:
 			f = clampi(int((1100.0 - d) / 110.0), 0, 5)
+			if f >= 2:
+				_cue(r, "meow", -4.0)
 			if f >= 4:
-				_fx_back.append({"kind": "pot", "from": at + Vector2(52, 66), "t": (660.0 - d) / maxf(world.speed(), 1.0)})
+				var t := (660.0 - d) / maxf(world.speed(), 1.0)
+				_fx_back.append({"kind": "pot", "from": at + Vector2(52, 66), "t": t})
+				if t > 0.75:
+					_cue(r, "pot", -4.0)
 		Scene.DISCO:
 			f = int(time * 7.0) % 6
 			if absf(d) < 1100.0:
 				_fx_back.append({"kind": "disco", "at": mid, "seed": int(r.x0)})
+				# A bar of music, again each bar while it is near.
+				_cue(r, "disco", -7.0, "%d" % int(time / 2.0))
 		Scene.GRANNY:
 			f = clampi(int((900.0 - d) / 100.0), 0, 5)
 			if f >= 3 and f < 5:
 				_fx_front.append({"kind": "glint", "at": at + Vector2(30, 40)})
 			if f == 5 and d > -500.0:
 				_fx_front.append({"kind": "spot", "at": mid})
+				_cue(r, "granny", -3.0)
 		Scene.COUPLE:
 			f = clampi(int((1000.0 - d) / 100.0), 0, 5)
 			if f >= 4:
 				_fx_front.append({"kind": "pillow", "from": at + Vector2(16, 24), "t": (600.0 - d) / maxf(world.speed(), 1.0)})
+				_cue(r, "pillow", -3.0)
 		Scene.GRANDPA:
 			f = int(time * 5.0) % 6
 			_fx_back.append({"kind": "tv", "at": mid})
+			if (f == 1 or f == 4) and absf(d) < 900.0:
+				_cue(r, "grunt", -6.0, "%d" % int(time * 5.0))
 		Scene.DOG:
 			if d > 700.0:
 				f = 0
@@ -723,6 +754,7 @@ func _draw_scene(kind: int, at: Vector2, r: Dictionary) -> void:
 				f = 1
 			elif d > 150.0:
 				f = 2 + int(time * 8.0) % 2
+				_cue(r, "woof", -3.0, "%d" % int(time * 4.0))
 				shake = Vector2(S * (int(time * 30.0) % 2), 0)
 				_fx_front.append({"kind": "woof", "at": at + Vector2(size.x * 0.5, -40), "k": int(time * 8.0) % 2})
 			else:
@@ -730,8 +762,27 @@ func _draw_scene(kind: int, at: Vector2, r: Dictionary) -> void:
 		Scene.MIRROR:
 			# Poses for the mirror, spots the courier, then shuts the curtain.
 			f = clampi(int((1000.0 - d) / 110.0), 0, 5)
+			if f >= 4:
+				_cue(r, "eek", -4.0)
+			if f >= 5:
+				_cue(r, "curtain", -4.0)
 	draw_texture_rect_region(SCENES, Rect2(at + shake, size), Rect2(f * WIN_W, kind * WIN_H, WIN_W, WIN_H))
 	_draw_glass(at, 0.12)
+
+
+## Plays a scene's sound once per window (or once per beat, with a key that
+## changes), however many frames the scene is drawn.
+var _cued := {}
+
+
+func _cue(r: Dictionary, sound: String, volume_db := 0.0, beat := "") -> void:
+	var key := "%d:%s:%s" % [int(r.x0), sound, beat]
+	if _cued.has(key):
+		return
+	if _cued.size() > 200:
+		_cued.clear()
+	_cued[key] = true
+	sfx.play(sound, 0.04, volume_db)
 
 
 func _prop(cell: Vector2i, center: Vector2, scale := S, rot := 0.0, mod := Color.WHITE) -> void:

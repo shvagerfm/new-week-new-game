@@ -21,8 +21,18 @@ const SOUNDS := {
 	"fall": preload("res://sfx/fall.wav"),
 	"best": preload("res://sfx/best.wav"),
 	"click": preload("res://sfx/click.wav"),
+	# Window scenes
+	"meow": preload("res://sfx/meow.wav"),
+	"pot": preload("res://sfx/pot.wav"),
+	"disco": preload("res://sfx/disco.wav"),
+	"granny": preload("res://sfx/granny.wav"),
+	"pillow": preload("res://sfx/pillow.wav"),
+	"grunt": preload("res://sfx/grunt.wav"),
+	"woof": preload("res://sfx/woof.wav"),
+	"eek": preload("res://sfx/eek.wav"),
+	"curtain": preload("res://sfx/curtain.wav"),
 }
-const VOICES := 8
+const VOICES := 10
 
 var muted := false
 var _players: Array[AudioStreamPlayer] = []

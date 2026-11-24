@@ -506,7 +506,7 @@ func _gen_roof() -> void:
 		dy *= 0.4
 	dy = snappedf(dy, 8.0)
 
-	if not prev.crumble and m > next_piece_m and rng.randf() < 0.35:
+	if not prev.crumble and m > next_piece_m and rng.randf() < 0.5:
 		var kind := _pick_piece(m, prev.base)
 		match kind:
 			"bat": _gen_bat(prev, v)
@@ -518,7 +518,7 @@ func _gen_roof() -> void:
 		last_piece = kind
 		if not kind in pieces_seen:
 			pieces_seen.append(kind)
-		next_piece_m = m + rng.randf_range(350.0, 600.0)
+		next_piece_m = m + rng.randf_range(280.0, 480.0)
 		return
 
 	var launch: float = prev.x1
@@ -562,7 +562,9 @@ func _gen_obstacles(r: Dictionary, v: float, m: float, d: float) -> void:
 	var flat_hold := reach(v, 0.0, true)
 	var cursor: float = r.x0 + v * 0.65
 	var placed := false
-	while m > 60.0 and rng.randf() < lerpf(0.5, 0.85, d):
+	# Every roof from 60 m gets something to deal with; the chance of one
+	# more after it grows with difficulty, so long roofs are never empty.
+	while m > 60.0 and (not placed or rng.randf() < lerpf(0.65, 0.9, d)):
 		var kind := _pick_kind(m)
 		var size: Vector2 = {"ac": AC_SIZE, "antenna": ANTENNA_SIZE}.get(kind, Vector2.ZERO)
 		if kind == "skylight":
@@ -571,7 +573,7 @@ func _gen_obstacles(r: Dictionary, v: float, m: float, d: float) -> void:
 		var room: float = r.x1 - (flat_hold * 0.85 if kind == "antenna" else flat_tap * 0.95) - size.x - cursor
 		if room < 0.0:
 			break
-		var ox := snappedf(cursor + rng.randf() * minf(room, v * 0.8), 4.0)
+		var ox := snappedf(cursor + rng.randf() * minf(room, v * 0.5), 4.0)
 		obstacles.append({"kind": kind, "x0": ox, "x1": ox + size.x, "y0": r.y - size.y, "y1": r.y, "roof": r.id})
 		placed = true
 		if kind == "antenna" and rng.randf() < 0.5:
