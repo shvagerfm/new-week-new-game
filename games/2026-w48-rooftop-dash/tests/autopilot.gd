@@ -46,6 +46,11 @@ func _run(w: World, goal: float) -> bool:
 	if tried > max_tries:
 		return false
 	var key := "%d:%d" % [int(w.x / 24.0), int(w.y)]
+	# Near a blinking billboard the same spot at another moment is a
+	# different state.
+	for o in w.obstacles:
+		if o.kind == "billboard" and o.x1 > w.x and o.x0 < w.x + 2000.0:
+			key += ":%d" % int(fmod(w.t + o.phase, World.BOARD_PERIOD) / 0.1)
 	if _seen.has(key):
 		return false
 	_seen[key] = true
@@ -125,7 +130,7 @@ func _count(from: World, to: World) -> void:
 	for o in to.obstacles:
 		if o.x1 > from.x and o.x1 <= to.x:
 			stats[o.kind] = stats.get(o.kind, 0) + 1
-			if (o.get("grab", false) or o.kind == "window") and o.used:
+			if o.get("used", false):
 				rides[o.kind] = rides.get(o.kind, 0) + 1
 	for wr in to.wires:
 		if wr.ax > from.x - 20.0 and wr.ax <= to.x:

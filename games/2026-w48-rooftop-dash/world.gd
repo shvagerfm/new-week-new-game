@@ -92,9 +92,16 @@ const BALC_W := 0.5           # balcony width, in seconds of running
 const RACK_LOW := 315.0       # bottom of the laundry above, over the balcony floor
 const RACK_TOP := 395.0       # the balcony slab above, over the floor
 
+## A billboard on a pole in a gap too wide to jump: you can stand on it
+## only while its lights are on.
+const BOARD_PERIOD := 1.5
+const BOARD_ON := 0.95
+const BOARD_W := 0.55         # seconds of running
+const BOARD_UP := 40.0        # its top, above the roof in front of it
+
 ## Which puzzle points can show up from which distance (metres).
 const PIECES := {"bat": 230.0, "awning": 330.0, "laundry": 450.0, "zipline": 550.0,
-	"cradle": 700.0, "crane": 850.0, "window": 950.0, "balcony": 1050.0}
+	"cradle": 700.0, "crane": 850.0, "window": 950.0, "balcony": 1050.0, "billboard": 1150.0}
 
 var rng := RandomNumberGenerator.new()
 ## {id, x0, x1, y, base, crumble, t, vy}. t is -1 until a crumbling roof is touched.
@@ -361,7 +368,20 @@ func _start_carry(o: Dictionary, ev: Array) -> void:
 
 
 func _support_at(s: Dictionary) -> bool:
+	if s.get("kind", "") == "billboard" and not board_lit(s):
+		return false
 	return x + HALF_W > s.x0 + 2.0 and x - HALF_W < s.x1 - 2.0
+
+
+## True while the billboard's lights are on (tests can keep them off).
+func board_lit(o: Dictionary) -> bool:
+	return not "billboard" in no_grab and fmod(t + o.phase, BOARD_PERIOD) < BOARD_ON
+
+
+## Seconds until the billboard's lights next change, for drawing its warning.
+func board_left(o: Dictionary) -> float:
+	var k := fmod(t + o.phase, BOARD_PERIOD)
+	return BOARD_ON - k if k < BOARD_ON else BOARD_PERIOD - k
 
 
 func _top_of(s: Dictionary) -> float:
@@ -379,7 +399,7 @@ func _try_land(py: float, ev: Array) -> void:
 	var best := {}
 	var best_top := INF
 	for s in roofs + obstacles:
-		if s.has("kind") and not s.kind in ["ac", "furniture"]:
+		if s.has("kind") and not s.kind in ["ac", "furniture", "billboard"]:
 			continue
 		var top := _top_of(s)
 		if _support_at(s) and py <= top + 0.5 and y >= top and top < best_top:
@@ -397,6 +417,12 @@ func _try_land(py: float, ev: Array) -> void:
 	ev.append({"type": "land", "impact": impact})
 	if best.get("inside", false):
 		_enter_flat(best, ev)
+	if best.get("kind", "") == "billboard" and not best.used:
+		best.used = true
+		carries += 1
+		var pts := PUZZLE_POINTS * multiplier()
+		bonus += pts
+		ev.append({"type": "grab", "kind": "billboard", "points": pts})
 	if best.has("id"):
 		ref_y = best.y
 		if best.crumble and best.t < 0.0:
@@ -445,6 +471,8 @@ func _collide(px: float, ev: Array) -> void:
 				_start_carry(o, ev)
 				return
 			continue
+		if o.kind == "billboard":
+			continue  # you pass through it when you don't land on it
 		if o.kind == "window":
 			# Shut (only in tests), the window is just more wall.
 			if o.kind in no_grab and body.intersects(Rect2(o.x0, o.y0, o.x1 - o.x0, o.y1 - o.y0)):
@@ -594,10 +622,11 @@ func _gen_roof() -> void:
 			"crane": _gen_crane(prev, v)
 			"window": _gen_window(prev, v)
 			"balcony": _gen_balconies(prev, v)
+			"billboard": _gen_billboard(prev, v)
 		last_piece = kind
 		if not kind in pieces_seen:
 			pieces_seen.append(kind)
-		next_piece_m = m + rng.randf_range(280.0, 480.0)
+		next_piece_m = m + rng.randf_range(200.0, 350.0)
 		return
 
 	var launch: float = prev.x1
@@ -735,7 +764,7 @@ func _pick_piece(m: float, base: float) -> String:
 		if m < PIECES[k]:
 			continue
 		var rise: float = {"laundry": WALL_RISE, "awning": WALL_RISE, "cradle": CRADLE_RISE,
-			"crane": CRANE_UP, "window": SILL_RISE}.get(k, 0.0)
+			"crane": CRANE_UP, "window": SILL_RISE, "billboard": BOARD_UP}.get(k, 0.0)
 		var drop: float = {"zipline": ZIP_DROP_MIN, "bat": 40.0,
 			"balcony": BALC_STEP * BALC_N - 96.0}.get(k, 0.0)
 		if base - rise < -520.0 or base + drop > 520.0:
@@ -916,6 +945,24 @@ func _gen_balconies(prev: Dictionary, v: float) -> void:
 			r.wall_top = a.y - RACK_TOP - 60.0
 	var cx0: float = last.x1 + snappedf(maxf(tap * 0.6, rise_x), 4.0)
 	_add_roof(cx0, cx0 + v * 2.2, last.base, false)
+
+
+## A gap far too wide to jump, with a billboard on a pole in the middle.
+## Its lights blink on and off; only while they are on can you stand on it.
+## Time the jump to land on it lit, then jump off before it goes dark.
+func _gen_billboard(prev: Dictionary, v: float) -> void:
+	var x0: float = prev.x1 + reach(v, 0.0, false) * 0.5
+	var a := _add_roof(x0, x0 + v * 2.4, prev.base, false)
+	var hold := reach(v, 0.0, true)
+	var w := snappedf(v * BOARD_W, 4.0)
+	var gap := snappedf(maxf(hold * 0.45, (hold * 1.4 - w) * 0.5), 4.0)
+	var bx0: float = a.x1 + gap
+	obstacles.append({"kind": "billboard", "used": false, "roof": a.id,
+		"x0": bx0, "x1": bx0 + w, "y0": a.y - BOARD_UP, "y1": a.y - BOARD_UP + 96.0,
+		"phase": rng.randf() * BOARD_PERIOD})
+	parcels.append({"x": bx0 + w * 0.5, "y": a.y - BOARD_UP - 60.0, "taken": false})
+	var cx0: float = bx0 + w + gap
+	_add_roof(cx0, cx0 + v * 2.2, a.base, false)
 
 
 ## How many ticks of the crane's swing you can let go on and still land on

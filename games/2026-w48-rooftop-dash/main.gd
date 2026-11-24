@@ -443,7 +443,7 @@ func _on_event(e: Dictionary) -> void:
 			grab_t = world.t
 			var names := {"bat": "BAT RIDE!", "laundry": "STEAM LIFT!", "awning": "BOING!",
 				"zipline": "ZIPLINE!", "cradle": "GOING UP!", "crane": "CRANE!  TAP TO LET GO",
-				"window": "WINDOW!  NOW TAP"}
+				"window": "WINDOW!  NOW TAP", "billboard": "ON THE BILLBOARD!"}
 			_popup(Vector2(world.x, world.y - 170.0), "%s  +%d" % [names.get(e.kind, "NICE!"), e.points], Art.GOLD)
 			match e.kind:
 				"bat":
@@ -454,6 +454,8 @@ func _on_event(e: Dictionary) -> void:
 					sfx.play("jump", 0.0, 0.0, 0.7)
 				"window":
 					sfx.play("curtain")
+				"billboard":
+					sfx.play("land", 0.05)
 				_:
 					sfx.play("clang", 0.05, -6.0)
 			sfx.play("best", 0.0, -8.0)
@@ -1090,7 +1092,7 @@ func _draw_trick_glow(o: Dictionary) -> void:
 
 
 func _draw_obstacle(o: Dictionary) -> void:
-	if (o.get("grab", false) or o.kind == "window") and not o.used:
+	if (o.get("grab", false) or o.kind in ["window", "billboard"]) and not o.used:
 		_draw_trick_glow(o)
 	match o.kind:
 		"window":
@@ -1100,6 +1102,9 @@ func _draw_obstacle(o: Dictionary) -> void:
 			return
 		"rack":
 			_draw_rack(o)
+			return
+		"billboard":
+			_draw_billboard(o)
 			return
 		"skylight":
 			_draw_skylight(o)
@@ -1294,6 +1299,53 @@ func _draw_flat(f: Dictionary) -> void:
 			var cx := wx + (8.0 if dir > 0.0 else -8.0 - wv)
 			draw_rect(Rect2(cx, cy, wv, 16.0), CURTAIN if k % 2 == 0 else CURTAIN.darkened(0.1))
 			draw_rect(Rect2(cx + (wv - 4.0 if dir > 0.0 else 0.0), cy, 4.0, 16.0), CURTAIN_DARK)
+
+
+# --- The billboard --------------------------------------------------------
+const BOARD_WORDS := ["PIZZA 24/7", "HOT DOGS", "NOODLES", "DELIVERY"]
+const BOARD_COLS := [Color("ff4d5e"), Color("ffd27a"), Color("4caf50"), Color("4a78ff")]
+
+
+## A neon billboard on a pole. Lit, its top is a ledge; dark, it is only
+## an outline you fall past. Just before the lights go out they stutter.
+func _draw_billboard(o: Dictionary) -> void:
+	var r := Rect2(o.x0, o.y0, o.x1 - o.x0, o.y1 - o.y0)
+	var cx := r.get_center().x
+	var bottom := _cam_now.y + get_viewport_rect().size.y + 8.0
+	draw_rect(Rect2(cx - 8.0, r.end.y, 16.0, bottom - r.end.y), Color("1d2347"))
+	draw_rect(Rect2(cx - 8.0, r.end.y, 4.0, bottom - r.end.y), Color("3a4478"))
+	var lit: bool = world.board_lit(o)
+	var left: float = world.board_left(o)
+	var show := lit
+	if left < 0.3 and int(time * 20.0) % 2 == 0:
+		show = not lit   # stutter: about to change
+	var k := Art.hash3(int(o.x0), 4) % BOARD_WORDS.size()
+	var col: Color = BOARD_COLS[k]
+	draw_rect(r.grow(6.0), Color("14101c"))
+	draw_rect(Rect2(r.position.x - 6.0, r.position.y - 6.0, r.size.x + 12.0, 6.0), Color("8796c8") if show else Color("3a4478"))
+	if show:
+		for i in 3:
+			draw_rect(r.grow(14.0 + i * 12.0), Color(col, 0.07))
+		draw_rect(r, col.darkened(0.55))
+		draw_rect(r.grow(-6.0), col.darkened(0.3))
+	else:
+		draw_rect(r, Color("0e0c16"))
+		draw_rect(r.grow(-6.0), Color("15121f"))
+	var font := screens.bold
+	var text: String = BOARD_WORDS[k]
+	var size := 28
+	var tw := font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, size).x
+	var at := Vector2(cx - tw * 0.5, r.get_center().y + 10.0)
+	if show:
+		draw_string_outline(font, at, text, HORIZONTAL_ALIGNMENT_LEFT, -1, size, 6, col.darkened(0.6))
+		draw_string(font, at, text, HORIZONTAL_ALIGNMENT_LEFT, -1, size, Color(1, 1, 0.95))
+	else:
+		draw_string(font, at, text, HORIZONTAL_ALIGNMENT_LEFT, -1, size, Color(col, 0.18))
+	# Bulbs along the top edge, the ledge you stand on.
+	var bx := r.position.x
+	while bx < r.end.x:
+		draw_rect(Rect2(bx, r.position.y - 10.0, 6.0, 4.0), Art.GOLD if show else Color("2a2440"))
+		bx += 16.0
 
 
 # --- Balcony steps --------------------------------------------------------
