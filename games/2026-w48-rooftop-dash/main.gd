@@ -312,10 +312,12 @@ func _physics_process(_delta: float) -> void:
 	if state == State.PAUSED:
 		return
 	if state == State.TITLE:
+		_prev_pos = Vector2(world.x, world.y)
 		world.step(false)
 		return
 	var was_alive := world.alive
 	var run := state == State.RUN
+	_prev_pos = Vector2(world.x, world.y)
 	for e in world.step(_held() and run, tapped and run):
 		_on_event(e)
 	tapped = false
@@ -334,6 +336,20 @@ func _physics_process(_delta: float) -> void:
 			sfx.play("best")
 
 
+## The world steps 60 times a second, but screens refresh at 60, 90, 120 or
+## 144 Hz and browsers don't keep a steady beat. Drawing the latest step
+## makes the city lurch (two steps in one frame, none in the next), so the
+## runner and the camera are drawn between the last two steps instead.
+var _prev_pos := Vector2.ZERO
+
+
+func _render_pos() -> Vector2:
+	var now := Vector2(world.x, world.y)
+	if state == State.PAUSED or _prev_pos.distance_to(now) > 200.0:
+		return now  # paused, or a new run: nothing to blend
+	return _prev_pos.lerp(now, Engine.get_physics_interpolation_fraction())
+
+
 func _process(delta: float) -> void:
 	time += delta
 	var vp := get_viewport_rect().size
@@ -341,12 +357,13 @@ func _process(delta: float) -> void:
 		_pause()
 	_update_rotate_hint()
 	if state != State.PAUSED:
-		var tx := world.x - vp.x * RUNNER_AT
+		var rp := _render_pos()
+		var tx := rp.x - vp.x * RUNNER_AT
 		if world.alive:
 			cam.x = tx
 		cam.y = lerpf(cam.y, _cam_target_y(), 1.0 - exp(-3.5 * delta))
 		# Keep the runner on screen when falling or jumping far from the roofs.
-		cam.y = clampf(cam.y, world.y - vp.y * 0.82, world.y - vp.y * 0.25) if world.alive else cam.y
+		cam.y = clampf(cam.y, rp.y - vp.y * 0.82, rp.y - vp.y * 0.25) if world.alive else cam.y
 		shake = maxf(shake - delta * 40.0, 0.0)
 		flash = maxf(flash - delta * 3.0, 0.0)
 		_update_effects(delta)
@@ -478,9 +495,24 @@ func _update_effects(delta: float) -> void:
 # --- Drawing ---------------------------------------------------------------
 
 func _draw() -> void:
+	# Everything that follows the runner (the courier, a rope, a carried
+	# trick) reads world.x and world.y, so they are set to the blended
+	# position for the draw and put back after it.
+	var now := Vector2(world.x, world.y)
+	var rp := _render_pos()
+	world.x = rp.x
+	world.y = rp.y
+	_draw_frame()
+	world.x = now.x
+	world.y = now.y
+
+
+func _draw_frame() -> void:
 	var vp := get_viewport_rect().size
 	var off := Vector2(randf_range(-shake, shake), randf_range(-shake, shake)) if shake > 0.0 else Vector2.ZERO
-	var c := (cam - off).snapped(Vector2(Art.P, Art.P))
+	# Whole pixels, not 4 px steps: at 400-800 px/s a 4 px grid makes the
+	# scroll alternate between short and long jumps, which reads as judder.
+	var c := (cam - off).round()
 	_draw_sky(vp, c)
 	draw_set_transform(-c)
 	_cam_now = c
@@ -1219,7 +1251,7 @@ func _runner_frame() -> int:
 func _draw_runner(c: Vector2) -> void:
 	var src := Rect2(_runner_frame() * FRAME, 0, FRAME, FRAME)
 	var size := Vector2(FRAME, FRAME) * S
-	var pos := (Vector2(world.x - FRAME * 0.5 * S, world.y - FEET * S) / S).round() * S
+	var pos := Vector2(world.x - FRAME * 0.5 * S, world.y - FEET * S).round()
 	if world.y > sink_y + 40.0:
 		return  # gone through the skylight
 	if not world.alive and world.death not in ["fall", "skylight"]:
