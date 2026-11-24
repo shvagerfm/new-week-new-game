@@ -511,19 +511,51 @@ func _collect(ev: Array) -> void:
 			ev.append({"type": "parcel", "x": p.x, "y": p.y, "points": pts})
 
 
-## Brings the courier back after a death, at the start of the next safe
-## roof past where it happened, standing still on it, and running on.
-## Score, parcels and the multiplier carry on.
+## Brings the courier back after a death, standing on a roof about
+## REVIVE_BACK before the spot where it happened, so the same stretch can be
+## tried again. The city stays as it was: crumbled roofs are put back and
+## puzzle points can be used again. Score, parcels and the multiplier carry on.
+const REVIVE_BACK := 10.0 * PX_PER_M
+
 func revive() -> void:
+	var want := death_x - REVIVE_BACK
+	var v := speed_at(want)
 	var r := {}
-	for c in roofs:
-		if c.x0 > death_x and not c.crumble and c.t < 0.0 and c.x1 - c.x0 > 120.0 \
-				and not c.has("hole_top"):
+	var at := 0.0
+	var cands := roofs.duplicate()
+	cands.reverse()
+	for c in cands:
+		if c.crumble or c.has("hole_top") or c.x0 > want + 1.0:
+			continue
+		# Stand on it with a little room to run before the edge.
+		var hi: float = c.x1 - minf(150.0, (c.x1 - c.x0) * 0.4)
+		var px: float = clampf(want, c.x0 + 16.0, hi)
+		if px < c.x0 + 16.0:
+			continue
+		# Not inside an obstacle: back off to before it.
+		for o in obstacles:
+			if o.get("roof", -1) == c.id and o.kind in ["ac", "antenna", "skylight", "furniture"] \
+					and px + HALF_W + v * 0.25 > o.x0 and px - HALF_W < o.x1:
+				px = o.x0 - HALF_W - v * 0.5
+		if px >= c.x0 + 16.0:
 			r = c
+			at = px
 			break
 	if r.is_empty():
 		return
-	x = r.x0 + 16.0
+	# Puzzle points and crumbling roofs ahead work again.
+	for c in roofs:
+		if c.x1 > at and c.crumble:
+			c.t = -1.0
+			c.vy = 0.0
+			c.y = c.base
+	for o in obstacles:
+		if o.x1 > at and o.has("used"):
+			o.used = false
+	# Wind the clock back by the run from here to where it happened, so
+	# anything timed to your arrival (the billboard) still lines up.
+	t -= run_time(at, death_x)
+	x = at
 	y = _top_of(r)
 	vy = 0.0
 	grounded = true
@@ -972,10 +1004,15 @@ func _gen_billboard(prev: Dictionary, v: float) -> void:
 
 ## When the courier, running on from here, reaches x.
 func time_at(at: float) -> float:
-	var tt := t
-	var px := x
-	while px < at:
-		var dx := minf(50.0, at - px)
+	return t + run_time(x, at)
+
+
+## Seconds of running from a to b (0 if b is behind a).
+func run_time(a: float, b: float) -> float:
+	var tt := 0.0
+	var px := a
+	while px < b:
+		var dx := minf(50.0, b - px)
 		tt += dx / speed_at(px + dx * 0.5)
 		px += dx
 	return tt
