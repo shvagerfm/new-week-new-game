@@ -105,7 +105,8 @@ func _draw_title(vp: Vector2) -> void:
 func _draw_over(vp: Vector2, k: float) -> void:
 	var w: World = main.world
 	var ease := 1.0 - pow(1.0 - k, 3.0)
-	var size := Vector2(640, 500)
+	var cont: bool = main.CONTINUE_ON
+	var size := Vector2(640, 600 if cont else 500)
 	var r := Rect2(vp * 0.5 - size * 0.5 + Vector2(0, (1.0 - ease) * 40.0 - 10.0), size)
 	r.position = r.position.round()
 	_panel(r)
@@ -130,8 +131,11 @@ func _draw_over(vp: Vector2, k: float) -> void:
 
 	_button("again", Rect2(r.position.x + 40, y + 384, 360, 84), "RUN AGAIN", 44, true)
 	_button("menu", Rect2(r.position.x + 420, y + 384, 180, 84), "MENU", 40, false)
+	if cont:
+		_button("continue", Rect2(r.position.x + 40, y + 484, 560, 84), "CONTINUE FROM HERE", 40, false)
 	_band(r.end.y + 20, 48)
-	_text(Vector2(cx, r.end.y + 52), "Tap or Space to run again   ·   Esc for the menu", 30, SOFT, 6)
+	var keys := "Space: run again   ·   C: continue   ·   Esc: menu" if cont else "Tap or Space to run again   ·   Esc for the menu"
+	_text(Vector2(cx, r.end.y + 52), keys, 30, SOFT, 6)
 
 
 # --- Pieces ----------------------------------------------------------------

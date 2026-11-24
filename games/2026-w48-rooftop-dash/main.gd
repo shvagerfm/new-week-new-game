@@ -84,6 +84,8 @@ func _unhandled_input(event: InputEvent) -> void:
 			key_down = event.pressed
 			if event.pressed and not _portrait():
 				_on_press()
+		elif event.pressed and k == KEY_C and CONTINUE_ON and state == State.OVER and results_shown:
+			_continue()
 		elif event.pressed and k == KEY_M:
 			_set_muted(not muted)
 		elif event.pressed and k == KEY_F and _can_fullscreen:
@@ -216,8 +218,11 @@ func _on_press(pos := Vector2(-1, -1)) -> void:
 		State.OVER:
 			if over_t < RESTART_DELAY:
 				return
-			if screens.button_at(pos) == "menu":
+			var b: String = screens.button_at(pos)
+			if b == "menu":
 				_to_menu()
+			elif b == "continue":
+				_continue()
 			else:
 				_new_world()
 				_start_run()
@@ -298,6 +303,33 @@ func _game_over() -> void:
 	tw.tween_property(music, "pitch_scale", 0.5, 0.5)
 	tw.parallel().tween_property(music, "volume_db", -40.0, 0.5)
 	tw.tween_callback(music.stop)
+
+
+## Continue after a death: for testing, so a tricky spot far into a run can
+## be tried again without running there from the start. Set to false to
+## take the button out.
+const CONTINUE_ON := true
+
+
+## Picks the run up again on the next safe roof past where it ended. The
+## score carries on; the best score was already saved at the death.
+func _continue() -> void:
+	world.revive()
+	if not world.alive:
+		return
+	sfx.play("click")
+	state = State.RUN
+	_release_all()
+	world.was_held = true
+	results_shown = false
+	new_best = false
+	sink_y = INF
+	passed_best = best_m <= world.meters()
+	_prev_pos = Vector2(world.x, world.y)
+	hint_label.hide()
+	_set_hud_visible(true)
+	if not muted:
+		music.start()
 
 
 ## The results panel itself is drawn by screens.gd; the top HUD steps aside.
