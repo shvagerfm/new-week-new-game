@@ -14,6 +14,8 @@ func _initialize() -> void:
 			seeds = a.get_slice("=", 1).to_int()
 	var fails := 0
 	for kind in World.PIECES:
+		if kind == "balcony":
+			continue  # plain (hard) jumping, no trick to turn off
 		for s in range(1, seeds + 1):
 			var first := _first(s, kind)
 			if first == INF:
