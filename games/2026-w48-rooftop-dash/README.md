@@ -12,6 +12,7 @@ This week's game is **landscape** (1280×720), unlike the portrait template: a r
 | F, or the corners button left of the speaker | Fullscreen on/off, hiding the browser bars. Hidden where the browser has no fullscreen for pages (iPhone Safari; there, Add to Home Screen does it) |
 | M, or the speaker in the top-right corner | Sound on/off |
 | Esc, P, or the pause button in the top-left corner | Pause |
+| C, or Continue from here on the results panel | Continue the run from the next safe roof past where you died (for testing; `CONTINUE_ON` in `main.gd` turns it off) |
 
 The game also pauses when the window or tab loses focus.
 

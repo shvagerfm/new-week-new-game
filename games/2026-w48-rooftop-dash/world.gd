@@ -102,6 +102,7 @@ var was_held := false
 var alive := true
 var death := ""
 var dead_vx := 0.0
+var death_x := 0.0
 var started := false
 var t := 0.0
 
@@ -438,7 +439,39 @@ func _collect(ev: Array) -> void:
 			ev.append({"type": "parcel", "x": p.x, "y": p.y, "points": pts})
 
 
+## Brings the courier back after a death, at the start of the next safe
+## roof past where it happened, standing still on it, and running on.
+## Score, parcels and the multiplier carry on.
+func revive() -> void:
+	var r := {}
+	for c in roofs:
+		if c.x0 > death_x and not c.crumble and c.t < 0.0 and c.x1 - c.x0 > 120.0:
+			r = c
+			break
+	if r.is_empty():
+		return
+	x = r.x0 + 16.0
+	y = _top_of(r)
+	vy = 0.0
+	grounded = true
+	ground = r
+	air_t = 0.0
+	jumped = false
+	buffer_t = 99.0
+	hold_t = 0.0
+	hold_jump = false
+	was_held = true
+	alive = true
+	death = ""
+	dead_vx = 0.0
+	carry = {}
+	ref_y = y
+	last_roof = r.id
+	_ensure_generated()
+
+
 func _die(reason: String, ev: Array) -> void:
+	death_x = x
 	alive = false
 	death = reason
 	grounded = false
