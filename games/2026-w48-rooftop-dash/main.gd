@@ -417,7 +417,14 @@ func _cam_target_y() -> float:
 		if r.x0 > world.x:
 			ahead = r.base
 			break
-	return lerpf(world.ref_y, ahead, 0.5) - get_viewport_rect().size.y * 0.6
+	var vp := get_viewport_rect().size
+	var target := lerpf(world.ref_y, ahead, 0.5) - vp.y * 0.6
+	# An awning or a cradle hangs below the roofs: lower the view in good
+	# time so it is on screen well before the jump that needs it.
+	for o in world.obstacles:
+		if o.get("pad", false) and not o.used and o.x0 - world.x < vp.x * 1.4 and o.x1 > world.x - 100.0:
+			target = maxf(target, o.y1 + 150.0 - vp.y)
+	return target
 
 
 func _on_event(e: Dictionary) -> void:
@@ -1016,7 +1023,24 @@ func _rope(a: Vector2, b: Vector2, col := ROPE) -> void:
 		draw_rect(Rect2(q, Vector2(S, S)), col)
 
 
+## Puzzle points glow gold and sparkle until used, so a secret trick is
+## spotted a screen ahead even when it is small or dark against the night.
+func _draw_trick_glow(o: Dictionary) -> void:
+	var c := Vector2((o.x0 + o.x1) * 0.5, (o.y0 + o.y1) * 0.5) as Vector2
+	var r: float = minf(maxf(o.x1 - o.x0, o.y1 - o.y0) * 0.6 + 26.0, 80.0)
+	var pulse: float = 0.5 + 0.5 * sin(time * 4.0 + o.x0 * 0.01)
+	for i in 3:
+		draw_circle(c, r * (1.0 - i * 0.25), Color(1.0, 0.82, 0.35, 0.07 + 0.05 * pulse))
+	for i in 3:
+		var a: float = time * 1.6 + i * TAU / 3.0 + o.x0
+		var p := (c + Vector2(cos(a), sin(a)) * r).snapped(Vector2(4, 4))
+		var sz := 8.0 if int(time * 6.0 + i) % 2 == 0 else 4.0
+		draw_rect(Rect2(p - Vector2(sz, sz) * 0.5, Vector2(sz, sz)), Art.GOLD)
+
+
 func _draw_obstacle(o: Dictionary) -> void:
+	if o.get("grab", false) and not o.used:
+		_draw_trick_glow(o)
 	match o.kind:
 		"skylight":
 			_draw_skylight(o)
