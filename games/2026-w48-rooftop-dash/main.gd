@@ -1303,8 +1303,9 @@ func _draw_parcel(p: Dictionary) -> void:
 func _draw_wire_posts(w: Dictionary) -> void:
 	for p in [Vector2(w.ax, w.ay), Vector2(w.bx, w.by)]:
 		var top := roundf(p.y)
-		draw_rect(Rect2(p.x - 4, top, 8, World.WIRE_HIGH), WIRE_DARK)
-		draw_rect(Rect2(p.x - 4, top, 2, World.WIRE_HIGH), WIRE_EDGE.darkened(0.3))
+		var h: float = w.get("h", World.WIRE_HIGH)
+		draw_rect(Rect2(p.x - 4, top, 8, h), WIRE_DARK)
+		draw_rect(Rect2(p.x - 4, top, 2, h), WIRE_EDGE.darkened(0.3))
 		draw_rect(Rect2(p.x - 12, top + 6, 24, 6), WIRE_DARK)
 		draw_rect(Rect2(p.x - 12, top + 6, 24, 2), WIRE_EDGE)
 
@@ -1315,6 +1316,15 @@ func _draw_wire(w: Dictionary) -> void:
 		var q := (p / S).round() * S
 		draw_rect(Rect2(q - Vector2(1, 2), Vector2(S, S * 2.0)), WIRE_DARK)
 		draw_rect(Rect2(q - Vector2(1, 2), Vector2(S, S)), WIRE_EDGE)
+	# A live wire over an AC unit crackles all the time, so it reads as danger.
+	if w.get("live", false):
+		for j in 3:
+			var i := (int(time * 20.0) * 7 + j * 11) % pts.size()
+			if (int(time * 15.0) + j) % 3 != 0:
+				var q := (pts[i] / S).round() * S
+				draw_rect(Rect2(q - Vector2(6, 8), Vector2(4, 4)), Color("9fe8ff"))
+				draw_rect(Rect2(q + Vector2(4, -4), Vector2(4, 4)), Art.GOLD)
+				draw_rect(Rect2(q - Vector2(2, 2), Vector2(4, 4)), Color.WHITE)
 	# A spark runs along it now and then, so it catches the eye.
 	var k := fmod(time * 0.8 + w.ax * 0.001, 1.6)
 	if k < 1.0:

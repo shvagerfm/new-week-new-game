@@ -32,6 +32,11 @@ const BEHIND := 1400.0
 ## a held jump hits them.
 const WIRE_HIGH := 370.0
 const WIRE_SAG := 30.0
+## Live wires low over AC units: above a tapped jump's head (158 + 96 px),
+## below a held one's (281 + 96 px), even where the wire sags.
+const LIVE_HIGH := 300.0
+const LIVE_REACH := 150.0     # how far the wire runs past the unit each side
+const LIVE_FROM_M := 400.0
 const AC_SIZE := Vector2(78, 62)   # the art at 2x
 const ANTENNA_SIZE := Vector2(12, 150)  # the pole; the art is drawn around it
 # --- Puzzle points ---------------------------------------------------------
@@ -609,6 +614,12 @@ func _gen_obstacles(r: Dictionary, v: float, m: float, d: float) -> void:
 		var ox := snappedf(cursor + rng.randf() * minf(room, v * 0.5), 4.0)
 		obstacles.append({"kind": kind, "x0": ox, "x1": ox + size.x, "y0": r.y - size.y, "y1": r.y, "roof": r.id})
 		placed = true
+		# A live wire strung low over an AC unit: a short tap clears both, a
+		# held jump runs the head into the wire.
+		if kind == "ac" and m > LIVE_FROM_M and rng.randf() < lerpf(0.3, 0.55, d):
+			var ax := maxf(r.x0 + 24.0, ox - LIVE_REACH)
+			var bx := minf(r.x1 - 24.0, ox + size.x + LIVE_REACH)
+			wires.append({"ax": ax, "ay": r.y - LIVE_HIGH, "bx": bx, "by": r.y - LIVE_HIGH, "h": LIVE_HIGH, "live": true})
 		if kind == "antenna" and rng.randf() < 0.5:
 			parcels.append({"x": ox + size.x * 0.5, "y": r.y - size.y - 40.0, "taken": false})
 		cursor = ox + size.x + maxf(flat_tap, flat_hold * 0.8) + v * 0.35
