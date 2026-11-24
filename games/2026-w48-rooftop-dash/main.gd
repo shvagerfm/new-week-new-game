@@ -557,6 +557,9 @@ func _draw_frame() -> void:
 	_cam_now = c
 	_fx_back.clear()
 	_fx_front.clear()
+	_draw_backdrop(c, vp)
+	_draw_scene_fx(_fx_back)   # the falling pot and the disco lights go behind the roofs
+	_fx_back.clear()
 	_draw_best_flag(vp, c)
 	for w in world.wires:
 		_draw_wire_posts(w)
@@ -784,19 +787,6 @@ func _draw_facade(r: Dictionary, top: float, bottom: float, tint: Color, c: Vect
 	var cw := TILE * S
 	var cells := _facade_cells(r)
 	var row := 64.0 if r.crumble else 0.0
-	# One scene per chosen roof, in a window of the top two floors.
-	var scene := -1
-	var scene_at := Vector2i(-1, -1)
-	var h := Art.hash3(int(r.x0), 4242)
-	var kind := _scene_for(r)
-	if kind >= 0:
-		var wins := []
-		for i in cells.size():
-			if cells[i][2] == 1:
-				wins.append(i)
-		if not wins.is_empty():
-			scene = kind
-			scene_at = Vector2i(wins[(h >> 4) % wins.size()], (h >> 11) % 2)
 	var floor_i := 0
 	var yy := top
 	while yy < bottom:
@@ -812,30 +802,75 @@ func _draw_facade(r: Dictionary, top: float, bottom: float, tint: Color, c: Vect
 				var sx := col * TILE + (TILE - w / S if col == 3 else 0.0)
 				if col == 1:
 					var at := Vector2(x + WIN.position.x * S, yy + WIN.position.y * S)
-					if Vector2i(i, floor_i) == scene_at:
-						_draw_scene(scene, at, r)
-					else:
-						_draw_room(at, Art.hash3(int(r.x0), i, floor_i))
+					_draw_room(at, Art.hash3(int(r.x0), i, floor_i))
 				draw_texture_rect_region(FACADE, Rect2(x, yy, w, cw), Rect2(sx, row, w / S, TILE), tint)
 		yy += cw
 		floor_i += 1
 
 
 ## Scenes are rare so they surprise: the run is cut into stretches of
-## SCENE_EVERY_M, most stretches pick one spot, and the roof under that spot
-## gets the scene. The kinds take turns, so the same one never comes twice
-## in a row.
-func _scene_for(r: Dictionary) -> int:
-	var m0: float = (r.x0 - world.start_x) / World.PX_PER_M
-	var m1: float = (r.x1 - world.start_x) / World.PX_PER_M
-	var b := int(m0 / SCENE_EVERY_M)
+## SCENE_EVERY_M, and most stretches get one, at a spot somewhere in the
+## middle. The kinds take turns, so the same one never comes twice in a row.
+## Returns [spot in metres, kind], or [] for a stretch without one.
+func _scene_in(b: int) -> Array:
 	var hb := Art.hash3(b, int(world.rng.seed), 777)
-	if hb % 100 >= SCENE_CHANCE:
-		return -1
+	if b < 0 or hb % 100 >= SCENE_CHANCE:
+		return []
 	var spot := b * SCENE_EVERY_M + SCENE_EVERY_M * (0.15 + 0.7 * float((hb >> 8) % 1000) / 1000.0)
-	if spot < SCENES_FROM_M or spot < m0 or spot >= m1:
-		return -1
-	return (b * 3 + Art.hash3(int(world.rng.seed), 31) % Scene.size()) % Scene.size()
+	if spot < SCENES_FROM_M:
+		return []
+	return [spot, (b * 3 + Art.hash3(int(world.rng.seed), 31) % Scene.size()) % Scene.size()]
+
+
+# --- The scene building ------------------------------------------------------
+## Each scene plays in one big window of a building in the background, between
+## the skyline and the roofs. It drifts by at half the roofs' speed, so it
+## stays on screen twice as long, and its window sits above the roof line.
+const BACK_PAR := 0.5                    # how fast it moves, against the roofs
+const BIG := Vector2(128, 160)           # the window opening, on screen
+const BACK_CELLS := 3                    # the building is three facade cells wide
+const BACK_TINT := Color(0.62, 0.62, 0.78)
+
+
+## Draws the scene buildings on screen. Called under the camera transform; a
+## point p on screen is drawn at p + c.
+func _draw_backdrop(c: Vector2, vp: Vector2) -> void:
+	var runner_sx := vp.x * RUNNER_AT
+	var runner_wx := c.x + runner_sx
+	var m := (runner_wx - world.start_x) / World.PX_PER_M
+	var b0 := int(m / SCENE_EVERY_M)
+	var cw := TILE * S
+	var bw := cw * BACK_CELLS
+	# The window sits below the score and above the roof line.
+	var dy := clampf((c.y - _cam_rest()) * 0.25, -30.0, 30.0)
+	var win_top := roundf(vp.y * 0.27 - dy)
+	for b in range(b0 - 2, b0 + 4):
+		var sc := _scene_in(b)
+		if sc.is_empty():
+			continue
+		var wx: float = world.start_x + sc[0] * World.PX_PER_M
+		var cx := roundf((wx - runner_wx) * BACK_PAR + runner_sx)
+		if cx + bw < -40.0 or cx - bw > vp.x + 40.0:
+			continue
+		var left := cx - bw * 0.5
+		var top := win_top - 72.0
+		# The wall: an end cell, plain brick, an end cell, floor after floor.
+		var yy := top
+		while yy < vp.y:
+			for i in BACK_CELLS:
+				var col := 0 if i == 0 else (3 if i == BACK_CELLS - 1 else 2)
+				draw_texture_rect_region(FACADE, Rect2(c + Vector2(left + i * cw, yy), Vector2(cw, cw)),
+					Rect2(col * TILE, 0, TILE, TILE), BACK_TINT)
+			yy += cw
+		draw_rect(Rect2(c + Vector2(left - 8, top - 12), Vector2(bw + 16, 12)), Color("2a2440"))
+		# The big window: warm light spilling out, a dark frame, the scene, a sill.
+		var at := c + Vector2(cx - BIG.x * 0.5, win_top)
+		draw_rect(Rect2(at, BIG).grow(28), Color(1.0, 0.78, 0.4, 0.10))
+		draw_rect(Rect2(at, BIG).grow(10), Color("1a1420"))
+		draw_rect(Rect2(at, BIG).grow(6), Color("5a4a6a"))
+		_draw_scene(sc[1], at, {"x0": float(b * 1000 + 7)}, BIG, world.speed() * BACK_PAR)
+		draw_rect(Rect2(at + Vector2(-18, BIG.y + 6), Vector2(BIG.x + 36, 12)), Color("8a7a9a"))
+		draw_rect(Rect2(at + Vector2(-18, BIG.y + 18), Vector2(BIG.x + 36, 6)), Color("3a3050"))
 
 
 func _draw_room(at: Vector2, h: int) -> void:
@@ -854,8 +889,11 @@ func _draw_glass(at: Vector2, a: float) -> void:
 ## Draws one window scene at the opening's top-left corner and queues what
 ## it throws out. Most scenes play as the courier comes near, so they peak
 ## when the eye should be on the next jump.
-func _draw_scene(kind: int, at: Vector2, r: Dictionary) -> void:
-	var size := Vector2(WIN_W, WIN_H) * S
+func _draw_scene(kind: int, at: Vector2, r: Dictionary, size := Vector2(WIN_W, WIN_H) * S,
+		spd := 0.0) -> void:
+	if spd <= 0.0:
+		spd = world.speed()
+	var k := size.x / (WIN_W * S)     # offsets below are for a 64x80 window
 	var mid := at + size * 0.5
 	var d := mid.x - world.x          # how far ahead of the courier
 	var f := 0
@@ -866,8 +904,8 @@ func _draw_scene(kind: int, at: Vector2, r: Dictionary) -> void:
 			if f >= 2:
 				_cue(r, "meow", -4.0)
 			if f >= 4:
-				var t := (660.0 - d) / maxf(world.speed(), 1.0)
-				_fx_back.append({"kind": "pot", "from": at + Vector2(52, 66), "t": t})
+				var t := (660.0 - d) / maxf(spd, 1.0)
+				_fx_back.append({"kind": "pot", "from": at + Vector2(52, 66) * k, "t": t})
 				if t > 0.75:
 					_cue(r, "pot", -4.0)
 		Scene.DISCO:
@@ -879,14 +917,14 @@ func _draw_scene(kind: int, at: Vector2, r: Dictionary) -> void:
 		Scene.GRANNY:
 			f = clampi(int((900.0 - d) / 100.0), 0, 5)
 			if f >= 3 and f < 5:
-				_fx_front.append({"kind": "glint", "at": at + Vector2(30, 40)})
+				_fx_front.append({"kind": "glint", "at": at + Vector2(30, 40) * k})
 			if f == 5 and d > -500.0:
 				_fx_front.append({"kind": "spot", "at": mid})
 				_cue(r, "granny", -3.0)
 		Scene.COUPLE:
 			f = clampi(int((1000.0 - d) / 100.0), 0, 5)
 			if f >= 4:
-				_fx_front.append({"kind": "pillow", "from": at + Vector2(16, 24), "t": (600.0 - d) / maxf(world.speed(), 1.0)})
+				_fx_front.append({"kind": "pillow", "from": at + Vector2(16, 24) * k, "t": (600.0 - d) / maxf(spd, 1.0)})
 				_cue(r, "pillow", -3.0)
 		Scene.GRANDPA:
 			f = int(time * 5.0) % 6
@@ -912,8 +950,12 @@ func _draw_scene(kind: int, at: Vector2, r: Dictionary) -> void:
 				_cue(r, "eek", -4.0)
 			if f >= 5:
 				_cue(r, "curtain", -4.0)
-	draw_texture_rect_region(SCENES, Rect2(at + shake, size), Rect2(f * WIN_W, kind * WIN_H, WIN_W, WIN_H))
-	_draw_glass(at, 0.12)
+	# Frames are 32x40 now; a sheet drawn at 64x80 drops in as it is.
+	var fw := SCENES.get_width() / 6.0
+	var fh := SCENES.get_height() / float(Scene.size())
+	draw_texture_rect_region(SCENES, Rect2(at + shake, size), Rect2(f * fw, kind * fh, fw, fh))
+	draw_rect(Rect2(at + Vector2(10, 0) * k, Vector2(8 * k, size.y)), Color(1, 1, 1, 0.12))
+	draw_rect(Rect2(at + Vector2(24, 0) * k, Vector2(4 * k, size.y)), Color(1, 1, 1, 0.07))
 
 
 ## Plays a scene's sound once per window (or once per beat, with a key that

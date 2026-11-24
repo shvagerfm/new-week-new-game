@@ -48,7 +48,7 @@ The game also pauses when the window or tab loses focus.
 ## Windows
 
 - Windows are big (64×80 on screen). About half are lit, each showing a room.
-- Scenes are rare, so each one is a surprise. From 150 m, the run is cut into 350 m stretches, and about three in four of them get one scene in a window on the top two floors (`SCENE_EVERY_M`, `SCENE_CHANCE` in `main.gd`). That is about five scenes in 3000 m. The scenes take turns, so the same one never comes twice in a row. They never hurt you; they are there to pull your eye away from the jump, and each has its own sound:
+- Scenes are rare, so each one is a surprise. From 150 m, the run is cut into 350 m stretches, and about three in four of them get one scene. Each scene plays in one big window (128×160 on screen) of a building in the background, between the skyline and the roofs. That building drifts by at half the roofs' speed, so the scene stays on screen about twice as long, above the roof line (`SCENE_EVERY_M`, `SCENE_CHANCE` in `main.gd`). That is about five scenes in 3000 m. The scenes take turns, so the same one never comes twice in a row. They never hurt you; they are there to pull your eye away from the jump, and each has its own sound:
   - Cat: meows, pushes a pot off the sill as you come near, and the pot falls past the facade and smashes.
   - Disco dancer: busts disco moves to a disco beat, with coloured lights sweeping over the roofs.
   - Granny: opens the curtains, watches through binoculars, then switches on a lamp whose beam follows you, grumbling at you.
@@ -83,7 +83,7 @@ Every sound is synthesized by `sfx/make_sfx.py`, so a recipe change is one scrip
 | `sprites/skyline-*.png` | Far, middle and near parallax layers, wrapping. 1280×720 is drawn 1:1; 640×360 is drawn at 2x |
 | `sprites/facade.png` | 4×2 atlas of 64×64 facade cells, one floor each: left end, wall with window, plain wall, right end; row 2 is the crumbling look. The window opening (x 16-47, y 12-51) is see-through |
 | `sprites/window-rooms.png` | 32×40 rooms behind the glass: kitchen, bedroom, living room, stairs, dark |
-| `sprites/window-scenes.png` | Seven window scenes, one per row, six 32×40 frames each: cat and pot, disco dancer, granny with binoculars, couple and pillow, grandpa lifting, dog, mirror pin-up |
+| `sprites/window-scenes.png` | Seven window scenes, one per row, six frames each (32×40 now, drawn at 4×; a sheet of 64×80 frames, 384×560, drops in and is drawn at 2×): cat and pot, disco dancer, granny with binoculars, couple and pillow, grandpa lifting, dog, mirror pin-up |
 | `sprites/window-props.png` | 16×16 bits the scenes throw out: pot, pillow, feather, disco light, WOOF, glint |
 | `sprites/courier-tricks.png` | 8 more courier poses, 64×64, feet at y = 58: hanging (hands at 32, 6), parachute, squat, launch, riding the cradle |
 | `sprites/bat.png`, `steam.png`, `laundry.png`, `skylight.png`, `awning.png`, `zipline.png`, `cradle.png`, `crane.png` | The puzzle points and skylights. Sizes, frames and anchor points are in the art list |
