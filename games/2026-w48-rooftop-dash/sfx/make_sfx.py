@@ -303,4 +303,106 @@ n = int(RATE * d)
 flap = lowpass(noise(d), 1200) * env(n, 0.01, 0.25) * (0.6 + 0.4 * np.sin(2 * np.pi * 18 * t_axis(d)))
 save("cloth", mix(flap, tone(np.linspace(120, 60, n), d) * env(n, 0.002, 0.12) * 0.6), peak=0.45)
 
+
+# --- Window scenes: one sound for each gag. ------------------------------
+# Voices are a buzzy saw shaped by two vowel resonances, which is enough for
+# a cartoon bark, meow or grumble.
+VOWELS = {"a": (800, 1200), "e": (500, 1800), "o": (500, 900), "i": (320, 2300), "u": (350, 800)}
+
+
+def bandpass(x, lo, hi):
+    return highpass(lowpass(x, hi), lo)
+
+
+def voice(f0, dur, vowel, vib=6.0, depth=0.03, attack=0.01, decay=None):
+    n = int(RATE * dur)
+    f = np.broadcast_to(np.asarray(f0, dtype=float), (n,))
+    f = f * (1 + depth * np.sin(2 * np.pi * vib * t_axis(dur)))
+    src = tone(f, dur, "saw")
+    f1, f2 = VOWELS[vowel]
+    out = bandpass(src, f1 * 0.6, f1 * 1.4) * 1.0 + bandpass(src, f2 * 0.7, f2 * 1.3) * 0.6
+    return out * env(n, attack, decay or dur * 0.8)
+
+
+def syllables(parts, gap=0.03):
+    """parts: (start pitch, end pitch, length, vowel)."""
+    out, t = [], 0.0
+    for a, b, dd, vw in parts:
+        k = int(RATE * dd)
+        out.append(at(voice(np.linspace(a, b, k), dd, vw, decay=dd * 0.9), t))
+        t += dd + gap
+    return mix(*out)
+
+
+# Dog: one deep woof; the game plays it again and again while it barks.
+d = 0.2
+n = int(RATE * d)
+save("woof", mix(voice(np.linspace(340, 170, n), d, "o", depth=0.0, attack=0.004, decay=0.14),
+                 lowpass(noise(d), 900) * env(n, 0.002, 0.06) * 0.5), peak=0.6)
+
+# Cat: a rising and falling meow, "i" into "a" into "u".
+d = 0.6
+n = int(RATE * d)
+f = np.interp(t_axis(d), [0, 0.2, 0.6], [520, 760, 480])
+fade_in = np.clip(t_axis(d) / 0.25, 0, 1)
+meow = mix(voice(f, d, "i", vib=7) * (1 - fade_in), voice(f, d, "a", vib=7) * fade_in * (1 - np.clip((t_axis(d) - 0.4) / 0.2, 0, 1)),
+           voice(f, d, "u", vib=7) * np.clip((t_axis(d) - 0.4) / 0.2, 0, 1))
+save("meow", meow * env(n, 0.04, 0.55), peak=0.45)
+
+# The cat's pot breaks on the roof: a dull clay crack and some bits.
+d = 0.35
+n = int(RATE * d)
+bits = mix(*[at(bandpass(noise(0.03), 1500, 4000) * env(int(RATE * 0.03), 0.001, 0.015), 0.05 + i * 0.045 + rng.uniform(0, 0.02)) for i in range(4)])
+save("pot", mix(lowpass(noise(0.12), 1800) * env(int(RATE * 0.12), 0.001, 0.06),
+                tone(np.linspace(140, 70, n), d) * env(n, 0.001, 0.1) * 0.8, bits * 0.5), peak=0.5)
+
+# Disco: one bar of four-on-the-floor with an octave bass and chord stabs.
+bpm = 120
+beat = 60 / bpm
+disco = np.zeros(int(RATE * beat * 4) + RATE // 4)
+for b in range(4):
+    kd = 0.18
+    k = int(RATE * kd)
+    disco = mix(disco, at(tone(np.geomspace(140, 45, k), kd) * env(k, 0.001, 0.12), b * beat))
+    hd = 0.09
+    disco = mix(disco, at(highpass(noise(hd), 6000) * env(int(RATE * hd), 0.002, 0.07) * 0.35, b * beat + beat / 2))
+    for e8, nm in enumerate(["A2", "A3"]):
+        bd = beat / 2 * 0.9
+        disco = mix(disco, at(tone(note(nm), bd, "saw", 0.45) * env(int(RATE * bd), 0.003, bd * 0.7), b * beat + e8 * beat / 2))
+    if b % 2 == 1:
+        sd = 0.16
+        chord = sum(tone(note(nm), sd, "square", 0.22) for nm in ["A4", "C5", "E5", "G5"])
+        disco = mix(disco, at(lowpass(chord, 3500) * env(int(RATE * sd), 0.002, 0.12), b * beat + beat / 2))
+save("disco", lowpass(disco, 6000), peak=0.5)
+
+# Granny: an angry grumble, all "na-na" and "tsk", ending high.
+save("granny", syllables([(420, 380, 0.11, "a"), (440, 400, 0.09, "e"), (470, 420, 0.12, "a"),
+                          (400, 360, 0.08, "o"), (450, 430, 0.1, "e"), (520, 470, 0.13, "a"),
+                          (480, 560, 0.16, "i")], gap=0.035), peak=0.45)
+
+# Couple: the pillow whooshes out, then a little giggle.
+d = 0.3
+n = int(RATE * d)
+whoosh = bandpass(noise(d), 500, 2500) * np.sin(np.pi * t_axis(d) / d) ** 2
+giggle = syllables([(640, 600, 0.06, "i"), (680, 620, 0.06, "i"), (700, 640, 0.06, "e"), (660, 560, 0.09, "e")], gap=0.04)
+save("pillow", mix(whoosh * 0.8, at(giggle, 0.28)), peak=0.45)
+
+# Grandpa: a strained "hnngh" on each lift, with the dumbbells clinking.
+d = 0.4
+n = int(RATE * d)
+grunt = voice(np.linspace(120, 105, n), d, "u", vib=11, depth=0.05, attack=0.03, decay=0.35)
+clink = sum(tone(fq, 0.15) * env(int(RATE * 0.15), 0.001, 0.08) * v for fq, v in [(1900, 0.3), (3100, 0.2)])
+save("grunt", mix(at(clink, 0.0), grunt * 0.9, lowpass(noise(d), 700) * env(n, 0.05, 0.3) * 0.2), peak=0.5)
+
+# Mirror: a startled "eek!", then the curtain swishes shut on its rings.
+d = 0.28
+n = int(RATE * d)
+eek = voice(np.geomspace(950, 1350, n), d, "i", vib=9, attack=0.005, decay=0.24)
+save("eek", eek, peak=0.42)
+d = 0.4
+n = int(RATE * d)
+swish = bandpass(noise(d), 400, 3000) * np.sin(np.pi * t_axis(d) / d) * env(n, 0.0, 0.5)
+rings = mix(*[at(tone(2600 + 300 * i, 0.03) * env(int(RATE * 0.03), 0.001, 0.015), 0.04 + i * 0.05) for i in range(6)])
+save("curtain", mix(swish, rings * 0.3), peak=0.45)
+
 print("wrote", sorted(f for f in os.listdir(OUT) if f.endswith(".wav")))

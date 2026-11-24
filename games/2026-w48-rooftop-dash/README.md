@@ -28,13 +28,13 @@ The game also pauses when the window or tab loses focus.
 - **Speed** starts at 400 px/s and climbs toward 800 px/s (about 540 px/s at 250 m, 620 at 500 m, 720 at 1000 m). Gaps get wider with it, roofs get shorter, and obstacles show up more often (difficulty is full at 1200 m).
 - **Edge landings.** Landing within 40 px of a roof's front edge raises the multiplier (up to ×5) and gives 10 × multiplier points. A normal landing on a new roof resets it. The edge zone of each roof ahead glows gold with small chevrons.
 - **Parcels** give 25 × multiplier. Parcels picked up close together play rising notes of a scale. They hang at the top of a full jump over a gap, above antennas, or in rows on roofs.
-- **Obstacles**
+- **Obstacles.** From 60 m every roof long enough for one gets at least one, and more follow as the difficulty rises, so there are no long stretches of plain running (`tests/density.gd` measures this).
   - Air conditioner: jump over it or land on top.
   - Antenna (150 px): a well-timed tap clears it, a hold is safer.
   - Skylight (from 150 m): glass in the roof. Running onto it breaks it, so jump over.
   - Wire across a gap: a tap passes under, a held jump hits it.
   - Crumbling roof (cracked, rust-tinted): it gives way a quarter second after you land, so jump off quickly.
-- **Puzzle points** (secret tricks, 50 × multiplier each, one every 350 to 600 m from 230 m). Each new kind shows up soon after it unlocks; after that they mix, never the same one twice in a row.
+- **Puzzle points** (secret tricks, 50 × multiplier each, one every 280 to 480 m from 230 m). Each new kind shows up soon after it unlocks; after that they mix, never the same one twice in a row.
   - Bat ride (from 230 m): two wide gaps you can just clear, then a third one step wider than any jump, with a bat hovering above its edge. Jump into the bat and the courier grabs it and is carried across.
   - Awning bounce (from 330 m): a building far too tall to jump, with a striped awning on its wall below your roof. Jumping hits the wall; drop off the edge onto the awning and it bounces you to the top.
   - Steam lift (from 450 m): a wall far too tall to jump, with steam rising from a pipe at its foot and laundry hanging before it. Jump into the laundry and the sheet catches the steam like a parachute and lifts you onto the wall.
@@ -46,14 +46,14 @@ The game also pauses when the window or tab loses focus.
 ## Windows
 
 - Windows are big (64×80 on screen). About half are lit, each showing a room.
-- From 60 m, about half the buildings have one scene in a window on the top two floors. The scenes never hurt you; they are there to pull your eye away from the jump:
-  - Cat: pushes a pot off the sill as you come near, and the pot falls past the facade.
-  - Disco dancer: busts disco moves, with coloured lights sweeping over the roofs.
-  - Granny: opens the curtains, watches through binoculars, then switches on a lamp whose beam follows you.
-  - Couple: have a pillow fight, and the pillow flies out of the window and tumbles towards the screen.
-  - Grandpa: lifts dumbbells in front of a flickering TV that lights up the wall.
-  - Dog: wakes as you come, barks (WOOF, the glass shakes), then squashes its nose on the glass.
-  - Mirror: a pin-up poses for her mirror, blows it a kiss, spots you and yanks the curtain shut.
+- Scenes are rare, so each one is a surprise. From 150 m, the run is cut into 350 m stretches, and about three in four of them get one scene in a window on the top two floors (`SCENE_EVERY_M`, `SCENE_CHANCE` in `main.gd`). That is about five scenes in 3000 m. The scenes take turns, so the same one never comes twice in a row. They never hurt you; they are there to pull your eye away from the jump, and each has its own sound:
+  - Cat: meows, pushes a pot off the sill as you come near, and the pot falls past the facade and smashes.
+  - Disco dancer: busts disco moves to a disco beat, with coloured lights sweeping over the roofs.
+  - Granny: opens the curtains, watches through binoculars, then switches on a lamp whose beam follows you, grumbling at you.
+  - Couple: have a pillow fight, and the pillow whooshes out of the window and tumbles towards the screen, with a giggle.
+  - Grandpa: lifts dumbbells with a grunt and a clink, in front of a flickering TV that lights up the wall.
+  - Dog: wakes as you come, barks (WOOF, you hear it and the glass shakes), then squashes its nose on the glass.
+  - Mirror: a pin-up poses for her mirror, blows it a kiss, spots you with an "eek!" and swishes the curtain shut.
 
 ## Screens
 
@@ -65,7 +65,7 @@ The game also pauses when the window or tab loses focus.
 
 Every sound is synthesized by `sfx/make_sfx.py`, so a recipe change is one script run away.
 
-- **Effects:** jump, landing (louder after a long drop), a quiet footstep each stride, edge chime (pitched up with the multiplier), combo lost, parcel, crumble creak, roof collapse, new best, and a death sound for each cause: a knock for walls and AC units, a clang for antennas, a zap for wires, breaking glass for skylights and a whistle for falls. Grabbing the bat squeaks; grabbing the laundry flaps. The parcel sound is a soft bloop into a bell.
+- **Effects:** jump, landing (louder after a long drop), a quiet footstep each stride, edge chime (pitched up with the multiplier), combo lost, parcel, crumble creak, roof collapse, new best, and a death sound for each cause: a knock for walls and AC units, a clang for antennas, a zap for wires, breaking glass for skylights and a whistle for falls. Grabbing the bat squeaks; grabbing the laundry flaps. Each window scene has its own sound: meow and pot smash, a bar of disco, granny's grumble, pillow whoosh and giggle, grandpa's grunt, woof, and the mirror's eek and curtain swish. The parcel sound is a soft bloop into a bell.
 - **Music:** an 8-bar loop at 128 bpm in three stems. The base (bass, kick, pad) plays from the first step. The drums fade in from 6% to 22% of the speed ramp (about 40-150 m), and the lead (arpeggio and a hook) from 30% to 50% (about 210-420 m). The loop also plays up to 12% faster at top speed. On death it slows and fades out.
 - **Mute:** the speaker button or M. The setting is saved.
 - **Web:** browsers keep audio locked until the first tap, click or key, and that same press starts the run and the music.
@@ -109,6 +109,9 @@ godot --headless --path . --script tests/bot.gd -- --seeds=20 --meters=2500
 # Puzzle points need their trick: with the bat (or the laundry) switched off,
 # the bot must get stuck at the first one.
 godot --headless --path . --script tests/puzzle_check.gd
+
+# How much plain running there is: roofs with no obstacle and the longest stretch without one.
+godot --headless --path . --script tests/density.gd
 
 # Touch input: a second thumb and a tap shorter than a frame both jump.
 godot --headless --path . --script tests/input_check.gd
