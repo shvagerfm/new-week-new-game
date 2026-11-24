@@ -36,7 +36,7 @@ The game also pauses when the window or tab loses focus.
   - Skylight (from 150 m): glass in the roof. Running onto it breaks it, so jump over.
   - Wire across a gap: a tap passes under, a held jump hits it.
   - Crumbling roof (cracked, rust-tinted): it gives way a quarter second after you land, so jump off quickly.
-- **Puzzle points** (secret tricks, 50 × multiplier each, one every 280 to 480 m from 230 m). Each new kind shows up soon after it unlocks; after that they mix, never the same one twice in a row.
+- **Puzzle points** (secret tricks, 50 × multiplier each, one every 280 to 480 m from 230 m). Each one glows gold and sparkles until used, so it is spotted a screen ahead, and the camera lowers early for the awning and the cradle, which hang below the roofs. Each new kind shows up soon after it unlocks; after that they mix, never the same one twice in a row.
   - Bat ride (from 230 m): two wide gaps you can just clear, then a third one step wider than any jump, with a bat hovering above its edge. Jump into the bat and the courier grabs it and is carried across.
   - Awning bounce (from 330 m): a building far too tall to jump, with a striped awning on its wall below your roof. Jumping hits the wall; drop off the edge onto the awning and it bounces you to the top.
   - Steam lift (from 450 m): a wall far too tall to jump, with steam rising from a pipe at its foot and laundry hanging before it. Jump into the laundry and the sheet catches the steam like a parachute and lifts you onto the wall.
