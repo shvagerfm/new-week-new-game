@@ -31,7 +31,7 @@ The game also pauses when the window or tab loses focus.
 - **Edge landings.** Landing within 40 px of a roof's front edge raises the multiplier (up to ×5) and gives 10 × multiplier points. A normal landing on a new roof resets it. The edge zone of each roof ahead glows gold with small chevrons.
 - **Parcels** give 25 × multiplier. Parcels picked up close together play rising notes of a scale. They hang at the top of a full jump over a gap, above antennas, or in rows on roofs.
 - **Obstacles.** From 60 m every roof long enough for one gets at least one, and more follow as the difficulty rises, so there are no long stretches of plain running (`tests/density.gd` measures this).
-- **Live wires.** From 400 m an AC unit sometimes has a sparking wire strung low above it, running about 150 px past the unit on each side. A tap clears both the unit and the wire; a held jump hits the wire.
+- **Live wires.** From 400 m an AC unit sometimes has a sparking wire strung above it (340 px over the roof, glowing, with high-voltage signs on its poles), running about 150 px past the unit on each side. A tap clears both the unit and the wire; a held jump hits the wire.
   - Air conditioner: jump over it or land on top.
   - Antenna (150 px): a well-timed tap clears it, a hold is safer.
   - Skylight (from 150 m): glass in the roof. Running onto it breaks it, so jump over.
