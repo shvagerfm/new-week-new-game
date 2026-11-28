@@ -666,7 +666,7 @@ func _draw_ornament(ball: Vector2, ang: float, color: Color, fire: bool, pin_fro
 	draw_line(pin_start, ball - d * BALL, Color("d8c27a"), 4.0)
 	draw_line(ball - d * BALL, ball - d * (BALL - 2.0), Color("8f7a3a"), 8.0)
 	if tex:
-		draw_set_transform(ball, ang + PI * 0.5, Vector2.ONE * (2.4 * BALL / tex.get_width()))
+		draw_set_transform(ball, ang - PI * 0.5, Vector2.ONE * (2.4 * BALL / tex.get_width()))
 		draw_texture(tex, -Vector2(tex.get_width(), tex.get_height()) * 0.5, color)
 		draw_set_transform(Vector2.ZERO)
 	else:
@@ -684,9 +684,12 @@ func _draw_elf() -> void:
 	var tex := Art.tex("elf")
 	var lift := -10.0 * throw_anim
 	if tex:
-		var h := 210.0
+		# The art raises its hand at the top left, so it is shifted right to put
+		# that hand under the throw line.
+		var h := 250.0
 		var sc := h / tex.get_height()
-		draw_texture_rect(tex, Rect2(p + Vector2(-tex.get_width() * sc * 0.5, -h * 0.62 + lift), Vector2(tex.get_width(), tex.get_height()) * sc), false)
+		var w := tex.get_width() * sc
+		draw_texture_rect(tex, Rect2(p + Vector2(-w * 0.16, -h * 0.66 + lift), Vector2(w, h)), false)
 	else:
 		# body, belt, head, hat, ears
 		draw_colored_polygon(PackedVector2Array([p + Vector2(-48, 70), p + Vector2(48, 70), p + Vector2(26, -10), p + Vector2(-26, -10)]), Color("2e9e4f"))
