@@ -308,7 +308,7 @@ func _game_over() -> void:
 ## Continue after a death: for testing, so a tricky spot far into a run can
 ## be tried again without running there from the start. Set to false to
 ## take the button out.
-const CONTINUE_ON := true
+const CONTINUE_ON := false
 
 
 ## Picks the run up again on the next safe roof past where it ended. The
