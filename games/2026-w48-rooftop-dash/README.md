@@ -87,7 +87,7 @@ Every sound is synthesized by `sfx/make_sfx.py`, so a recipe change is one scrip
 | `sprites/skyline-*.png` | Far, middle and near parallax layers, wrapping. 1280×720 is drawn 1:1; 640×360 is drawn at 2x |
 | `sprites/facade.png` | 4×2 atlas of 64×64 facade cells, one floor each: left end, wall with window, plain wall, right end; row 2 is the crumbling look. The window opening (x 16-47, y 12-51) is see-through |
 | `sprites/window-rooms.png` | 32×40 rooms behind the glass: kitchen, bedroom, living room, stairs, dark |
-| `sprites/window-scenes.png` | Seven window scenes, one per row, six frames each (128×160 frames, 768×1120, drawn 1:1 in the big background window; cut from the hi-res strips): cat and pot, disco dancer, granny with binoculars, couple and pillow, grandpa lifting, dog, mirror pin-up |
+| `sprites/window-scenes.png` | Seven window scenes, one per row, six frames each (32×40 frames, drawn at 4× in the big background window): cat and pot, disco dancer, granny with binoculars, couple and pillow, grandpa lifting, dog, mirror pin-up |
 | `sprites/window-props.png` | 16×16 bits the scenes throw out: pot, pillow, feather, disco light, WOOF, glint |
 | `sprites/courier-tricks.png` | 8 more courier poses, 64×64, feet at y = 58: hanging (hands at 32, 6), parachute, squat, launch, riding the cradle |
 | `sprites/bat.png`, `steam.png`, `laundry.png`, `skylight.png`, `awning.png`, `zipline.png`, `cradle.png`, `crane.png` | The puzzle points and skylights. Sizes, frames and anchor points are in the art list |
